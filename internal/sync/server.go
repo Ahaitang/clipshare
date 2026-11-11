@@ -44,6 +44,11 @@ type ServerConfig struct {
 //
 // 它不自己决定「收到之后干什么」——apply 是 engine 注入的回调，
 // 因此 handler 可以直接用 httptest 单测，不需要起真实端口。
+//
+// 安全边界：空 RoomKey 是配置错误，服务端对 /v1/items 一律 fail-closed
+// （回 500 拒绝接收），绝不因为「空串等于空串」而放行未鉴权请求；
+// /v1/health 本来免鉴权，不受影响。构造方应在启动时保证 RoomKey 非空
+// （config.Validate 已强制），这里只是把「万一配错」的后果限制为拒绝服务。
 type Server struct {
 	cfg   ServerConfig
 	store *history.Store
@@ -51,6 +56,9 @@ type Server struct {
 }
 
 // NewServer 组装服务端。store 用于内容去重（可为 nil），apply 可为 nil。
+//
+// RoomKey 为空时不会 panic，但该 Server 的 /v1/items 会对所有请求回 500：
+// 没有密钥就没有可校验的凭据，只能拒绝服务（详见 handleItems 与 Server 文档）。
 func NewServer(cfg ServerConfig, store *history.Store, apply func(model.Entry)) *Server {
 	if cfg.MaxBytes <= 0 {
 		cfg.MaxBytes = DefaultMaxBytes
@@ -76,6 +84,13 @@ func (s *Server) Handler() http.Handler {
 // 状态码约定：401 roomKey 不符、403 房间不符、400 内容为空/超限/JSON 非法、
 // 202 其余情况（含内容去重命中——去重也是「已接受但不处理」）。
 func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
+	// 配置错误优先于鉴权：空 RoomKey 时「空串 == 空串」会让不带 Authorization 的
+	// 请求通过 constantTimeEqual，这是不可接受的 fail-open。没有密钥就没有可校验的
+	// 凭据，只能 fail-closed 拒绝接收；回 500 而不是 401，避免被误判成客户端密钥错。
+	if s.cfg.RoomKey == "" {
+		writeError(w, http.StatusInternalServerError, "服务端未配置 roomKey，拒绝接收（配置错误：请检查 config.json 的 roomKey 并重启）")
+		return
+	}
 	if !constantTimeEqual(bearerToken(r), s.cfg.RoomKey) {
 		writeError(w, http.StatusUnauthorized, "roomKey 不匹配")
 		return
@@ -156,7 +171,9 @@ func bearerToken(r *http.Request) string {
 }
 
 // constantTimeEqual 是定长比较，避免按字节提前返回泄露 key 前缀。
-// 空串与空串相等；roomKey 为空属于配置错误，由 config.Validate 拦住。
+//
+// 注意：空串与空串相等。因此调用方必须先排除「期望值为空」的情况
+// （handleItems 已在比较前拦下空 RoomKey），不能靠这个函数兜底。
 func constantTimeEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }

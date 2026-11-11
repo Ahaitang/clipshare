@@ -194,6 +194,92 @@ func TestItemsUnauthorized(t *testing.T) {
 	}
 }
 
+// TestItemsEmptyRoomKeyFailsClosed：空 roomKey 是配置错误，服务端必须拒绝服务。
+//
+// 回归用例：constantTimeEqual("", "") 为 true，曾经让「不带 Authorization」的请求
+// 直接通过鉴权；再配合 /v1/health 公开的 roomHash（空 key 的 hash 可被任何人算出），
+// 攻击者能凑出正确的 X-Room，从而真的把内容写进本机历史与剪贴板。
+// 这里断言 500 且没有任何副作用：不写历史、不调用 apply。
+func TestItemsEmptyRoomKeyFailsClosed(t *testing.T) {
+	derived := model.RoomHash("") // 空 key 推导出的 roomHash，可从 /v1/health 拿到
+	cases := []struct {
+		name string
+		auth string
+		room string
+	}{
+		{"无 Authorization、无 X-Room", "", ""},
+		{"无 Authorization、X-Room 用空 key 的派生值", "", derived},
+		{"Bearer 空 token、X-Room 用派生值", "Bearer ", derived},
+		{"Bearer 任意值、X-Room 用派生值", "Bearer anything", derived},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := history.New(10, "", false)
+			s := &sink{}
+			srv := NewServer(ServerConfig{NodeID: "node-a", NodeName: "NODE-A", Version: "0.1.0"}, store, s.apply)
+
+			raw, err := json.Marshal(testEntry("hello"))
+			if err != nil {
+				t.Fatalf("序列化条目失败: %v", err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/v1/items", strings.NewReader(string(raw)))
+			if tc.auth != "" {
+				req.Header.Set("Authorization", tc.auth)
+			}
+			if tc.room != "" {
+				req.Header.Set("X-Room", tc.room)
+			}
+			rec := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rec, req)
+
+			assertStatus(t, rec, http.StatusInternalServerError)
+			if body := rec.Body.String(); !strings.Contains(body, "roomKey") {
+				t.Fatalf("500 响应应说明 roomKey 未配置，实际: %s", body)
+			}
+			if got := s.count(); got != 0 {
+				t.Fatalf("空 roomKey 时不应调用 apply，实际 %d 次", got)
+			}
+			if got := store.Count(); got != 0 {
+				t.Fatalf("空 roomKey 时不应写入历史，实际 %d 条", got)
+			}
+		})
+	}
+}
+
+// TestHealthWithoutRoomKeyStillWorks：/v1/health 本来就免鉴权，不受 fail-closed 影响。
+func TestHealthWithoutRoomKeyStillWorks(t *testing.T) {
+	srv := NewServer(ServerConfig{NodeID: "node-a", NodeName: "NODE-A", Version: "0.1.0"}, nil, nil)
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/health", nil))
+	assertStatus(t, rec, http.StatusOK)
+
+	var got healthResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("解析 health 响应失败: %v", err)
+	}
+	if got.NodeID != "node-a" || got.RoomHash != model.RoomHash("") {
+		t.Fatalf("health 响应不对: %+v", got)
+	}
+	// X-Room 校验依赖 roomHash 恒非空：NewServer 总会从 RoomKey 推导，
+	// 所以「roomHash 与 X-Room 都为空时放行」这条路径不可达。
+	if len(got.RoomHash) != 12 {
+		t.Fatalf("roomHash 必须恒为非空 12 位，实际 %q", got.RoomHash)
+	}
+}
+
+// TestItemsNormalKeyRejectsEmptyBearer：回归保护——正常配置下空 Bearer 是 401，
+// 不能被 fail-closed 的 500 顶掉（否则排障时会误判成服务端配置错误）。
+func TestItemsNormalKeyRejectsEmptyBearer(t *testing.T) {
+	r := newRig(t, 0)
+	raw, _ := json.Marshal(testEntry("x"))
+	rec := r.do(t, http.MethodPost, "/v1/items", "Bearer ", r.roomHash(), string(raw))
+	assertStatus(t, rec, http.StatusUnauthorized)
+	if r.sink.count() != 0 || r.store.Count() != 0 {
+		t.Fatal("401 时不应写入历史或触发 apply")
+	}
+}
+
 // TestItemsForbiddenRoom：roomKey 对但房间标识不对 → 403（防误配串房间）。
 func TestItemsForbiddenRoom(t *testing.T) {
 	cases := []struct {
