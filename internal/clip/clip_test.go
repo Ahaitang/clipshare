@@ -2,7 +2,9 @@ package clip
 
 import (
 	"errors"
+	"fmt"
 	"os/exec"
+	"syscall"
 	"testing"
 )
 
@@ -69,5 +71,48 @@ func TestWithRetryNoBackoff(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("期望只调用 1 次，实际 %d 次", calls)
+	}
+}
+
+// TestMapReadErrorNoTextOnWindows：Windows 上 atotto 用 syscall.Errno(0) 表示
+// 「剪贴板里没有文本」——它的错误文本是 "The operation completed successfully"，
+// 但作为 error 接口值非 nil。这必须和 Linux 的 xsel 非零退出码一样映射成 ("", nil)，
+// 否则轮询会把「空剪贴板」当成真实故障，基线建不起来（用户第一次复制被吞）。
+//
+// 这条用 Linux 也能跑：syscall.Errno(0) 是跨平台的类型，errors.Is 判定与 OS 无关。
+func TestMapReadErrorNoTextOnWindows(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"裸 Errno(0)", syscall.Errno(0)},
+		{"被包装的 Errno(0)", fmt.Errorf("读取剪贴板失败: %w", syscall.Errno(0))},
+		{"Linux 的 ExitError", &exec.ExitError{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := mapReadError(tc.err)
+			if err != nil {
+				t.Fatalf("「没有文本」不应返回错误，实际 %v", err)
+			}
+			if got != "" {
+				t.Fatalf("「没有文本」应返回空串，实际 %q", got)
+			}
+		})
+	}
+}
+
+// TestMapReadErrorKeepsRealFailures：NoText 的放宽不能把真实故障也吞掉。
+func TestMapReadErrorKeepsRealFailures(t *testing.T) {
+	unavailable := fmt.Errorf("%w: 未找到可用的剪贴板命令", ErrUnavailable)
+	if _, err := mapReadError(unavailable); err == nil {
+		t.Fatal("ErrUnavailable 必须保持为错误")
+	} else if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("应保留 ErrUnavailable，实际 %v", err)
+	}
+
+	boom := errors.New("pipe closed")
+	if _, err := mapReadError(boom); err == nil {
+		t.Fatal("未知错误必须保持为错误")
 	}
 }

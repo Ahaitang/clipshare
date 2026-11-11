@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"syscall"
 	"time"
 
 	"github.com/atotto/clipboard"
@@ -81,15 +82,14 @@ func writeOnce(s string) error {
 	return nil
 }
 
-// mapReadError 把底层命令错误映射成 Clipboard 接口语义：
+// mapReadError 把底层读取错误映射成 Clipboard 接口语义：
 //
 //   - 命令跑起来了但拿不到文本（空剪贴板、只含图片、selection 无人持有）→ ("", nil)；
 //   - 命令本身缺失或其它真实故障 → 返回错误，由调用方决定告警。
 //
 // 这样轮询中的「复制的是一张图」不会被当成错误刷日志。
 func mapReadError(err error) (string, error) {
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	if isNoClipboardText(err) {
 		return "", nil
 	}
 	if errors.Is(err, exec.ErrNotFound) {
@@ -100,6 +100,26 @@ func mapReadError(err error) (string, error) {
 		return "", fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
 	return "", fmt.Errorf("读取剪贴板失败: %w", err)
+}
+
+// isNoClipboardText 判断错误是否只表示「剪贴板里没有文本」——这不是故障，
+// 而是「当前没有可同步的内容」（复制的是一张图、selection 无人持有等）。
+//
+// 两个平台用完全不同的方式表达同一件事：
+//   - Linux：xclip/xsel 以非零退出码表示没有文本，atotto 把它包成 *exec.ExitError；
+//   - Windows：atotto 直接把 syscall.Errno(0) 当 error 返回——错误文本是
+//     "The operation completed successfully"（0 == ERROR_SUCCESS），
+//     它是一个**非 nil 的 error 接口值**，但语义是成功而不是失败。
+//
+// Windows 这条如果不认出来，空剪贴板会被当成读取故障：轮询建不起基线，
+// 用户启动后的第一次复制会被当作「基线」吞掉（真机实测过）。
+func isNoClipboardText(err error) bool {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return true
+	}
+	// 可能被上层包装（fmt.Errorf("%w")），所以用 errors.Is 而不是相等比较。
+	return errors.Is(err, syscall.Errno(0))
 }
 
 // withRetry 按平台给定的退避序列重试；retryBackoff 为 nil 时只尝试一次。

@@ -281,3 +281,78 @@ func TestPollerNilOnChange(t *testing.T) {
 		t.Fatalf("轮询没有持续进行，Read 调用次数 = %d", fake.calls())
 	}
 }
+
+// setThenClearErr 在同一把锁里写内容并清掉读错误，避免测试自身的中间态。
+func (f *fakeClipboard) setThenClearErr(content string) {
+	f.mu.Lock()
+	f.content = content
+	f.readErr = nil
+	f.mu.Unlock()
+}
+
+// TestPollerPrimesAfterStartupReadErrors：启动阶段读失败时，超窗后的第一次成功读取
+// 必须按「变化」处理，否则用户启动后的第一次复制会被静默吞掉。
+//
+// 取舍：宁可多发一条用户自己的剪贴板内容（对端按内容去重），也不能丢用户的复制。
+func TestPollerPrimesAfterStartupReadErrors(t *testing.T) {
+	fake := &fakeClipboard{readErr: errReadFailed}
+	events := make(chan string, 8)
+	p := NewPoller(fake, testInterval, func(s string) { events <- s })
+	p.primeWindow = 30 * time.Millisecond // 缩短窗口，测试不必等默认的 2s
+	p.Start()
+	t.Cleanup(p.Stop)
+
+	// 启动窗口内一直读失败（Windows 上剪贴板为空时就是这样）
+	time.Sleep(80 * time.Millisecond)
+	if fake.calls() == 0 {
+		t.Fatal("轮询没有启动")
+	}
+
+	// 用户第一次复制：这是启动后第一次成功读取，必须触发
+	fake.setThenClearErr("A")
+	expectEvent(t, events, "A")
+
+	// 之后按正常变化检测
+	fake.set("B")
+	expectEvent(t, events, "B")
+}
+
+// TestPollerWindowExpiredEmptyFirstRead：超窗后第一次成功读取是「无文本」（空串）时，
+// 不回调空串（调用方也没法广播空内容），但必须建立基线，下一次复制照常触发。
+func TestPollerWindowExpiredEmptyFirstRead(t *testing.T) {
+	fake := &fakeClipboard{readErr: errReadFailed}
+	events := make(chan string, 8)
+	p := NewPoller(fake, testInterval, func(s string) { events <- s })
+	p.primeWindow = 20 * time.Millisecond
+	p.Start()
+	t.Cleanup(p.Stop)
+
+	time.Sleep(60 * time.Millisecond)
+	fake.setThenClearErr("") // 剪贴板仍然没有文本
+	expectNoEvent(t, events, 40*time.Millisecond)
+
+	fake.set("later")
+	expectEvent(t, events, "later")
+}
+
+// TestPollerNormalBaselineUnaffected：正常路径不受 B 改动影响——
+// 启动即读到内容时只建基线、不回调；随后变化各触发一次。
+func TestPollerNormalBaselineUnaffected(t *testing.T) {
+	fake := &fakeClipboard{content: "pre"}
+	_, events := startPoller(t, fake)
+
+	expectNoEvent(t, events, 50*time.Millisecond)
+	fake.set("user")
+	expectEvent(t, events, "user")
+	expectNoEvent(t, events, 40*time.Millisecond)
+}
+
+// TestPollerEmptyClipboardBaselineThenCopy：启动时剪贴板为空也算成功建立基线
+// （修复 A 之后 Windows 就是这条路径），用户随后第一次复制必须触发。
+func TestPollerEmptyClipboardBaselineThenCopy(t *testing.T) {
+	fake := &fakeClipboard{}
+	_, events := startPoller(t, fake)
+
+	fake.set("first-copy")
+	expectEvent(t, events, "first-copy")
+}

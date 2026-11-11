@@ -11,6 +11,9 @@ import (
 // DefaultInterval 是默认轮询间隔，与 config.DefaultPollIntervalMs 一致。
 const DefaultInterval = 400 * time.Millisecond
 
+// defaultPrimeWindow 是启动阶段重试建立基线的窗口上限。
+const defaultPrimeWindow = 2 * time.Second
+
 // Poller 轮询剪贴板，发现内容变化时回调。
 //
 // 变更检测只用「上次读到的内容」（lastSeen），不使用 suppress 标志位：
@@ -30,6 +33,12 @@ type Poller struct {
 	lastSeen string
 	primed   bool // 是否已经用首次读到的内容建立基线
 
+	// primeWindow 是启动阶段「读不到就在这个窗口内重试建基线」的时长。
+	// 窗口过后仍没读到内容时，下一次成功读取按「变化」处理（见 pollOnce）。
+	// 单独放字段是为了让测试能缩短它。
+	primeWindow   time.Duration
+	primeDeadline time.Time
+
 	startOnce stdsync.Once
 	stopOnce  stdsync.Once
 	running   atomic.Bool
@@ -45,11 +54,12 @@ func NewPoller(c Clipboard, interval time.Duration, onChange func(string)) *Poll
 		interval = DefaultInterval
 	}
 	return &Poller{
-		clip:     c,
-		interval: interval,
-		onChange: onChange,
-		stop:     make(chan struct{}),
-		done:     make(chan struct{}),
+		clip:        c,
+		interval:    interval,
+		onChange:    onChange,
+		primeWindow: defaultPrimeWindow,
+		stop:        make(chan struct{}),
+		done:        make(chan struct{}),
 	}
 }
 
@@ -59,6 +69,13 @@ func NewPoller(c Clipboard, interval time.Duration, onChange func(string)) *Poll
 // 不会触发启动广播。轮询读到错误时跳过本轮，保留基线。
 func (p *Poller) Start() {
 	p.startOnce.Do(func() {
+		p.mu.Lock()
+		if p.primeWindow <= 0 {
+			p.primeWindow = defaultPrimeWindow
+		}
+		p.primeDeadline = time.Now().Add(p.primeWindow)
+		p.mu.Unlock()
+
 		p.running.Store(true)
 		go p.loop()
 	})
@@ -113,11 +130,30 @@ func (p *Poller) pollOnce() {
 	}
 	content = model.Normalize(content)
 
+	now := time.Now()
 	p.mu.Lock()
 	if !p.primed {
 		p.primed = true
 		p.lastSeen = content
+		onChange := p.onChange
+		expired := !p.primeDeadline.IsZero() && now.After(p.primeDeadline)
 		p.mu.Unlock()
+		if !expired {
+			// 窗口内读到内容：这是进程启动前就躺在剪贴板里的东西，算基线，不回调
+			// （否则每次启动都会把旧内容广播一遍）。
+			return
+		}
+		// 窗口已过却一直没能建立基线（启动阶段读全失败：Windows 空剪贴板、
+		// 命令临时不可用……）。这时第一次成功读取很可能就是用户启动后的第一次复制，
+		// 必须按「变化」处理。
+		//
+		// 取舍：宁可多发一条用户自己的剪贴板内容（对端按内容去重，且内容本来就是
+		// 用户自己复制的），也不能静默吞掉用户的第一次复制——那种情况下用户完全
+		// 没有反馈，只会觉得「同步坏了」。
+		if content == "" || onChange == nil {
+			return
+		}
+		onChange(content)
 		return
 	}
 	changed := content != p.lastSeen
