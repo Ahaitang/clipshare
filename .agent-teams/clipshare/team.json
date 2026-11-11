@@ -1,0 +1,1217 @@
+{
+  "name": "clipshare",
+  "id": "clipshare",
+  "description": "实现 clipshare：Go 单二进制、对称 P2P 的局域网剪贴板共享工具（Ubuntu + Windows）。spec 与任务拆解已定稿在 docs/superpowers/specs/，M1（model/config/history）已完成并提交。",
+  "captainSessionId": "session-cf8420cc-3869-49c7-a3f6-650257d71458",
+  "createdAt": 1794394015684,
+  "phase": "running",
+  "members": [
+    {
+      "id": "1a1e4fb7-97cd-4d03-82ae-df7d6273da0e",
+      "name": "engine-core",
+      "role": "engineer",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "reasoningEffort": "medium",
+      "joinedAt": 1794394015684,
+      "status": "idle",
+      "runtimeSetup": {
+        "persona": "You are engine-core, a member of the multi-agent team \"clipshare\" running inside DeepSeek Harness AgentTeams. The captain leads the team; you are a worker member with the role: engineer.\n\nTeam context:\n- Team id: clipshare\n- Your name inside the team (use it as `from`/identity): engine-core\n- Team goal: 实现 clipshare：Go 单二进制、对称 P2P 的局域网剪贴板共享工具（Ubuntu + Windows）。spec 与任务拆解已定稿在 docs/superpowers/specs/，M1（model/config/history）已完成并提交。\n- Profile protocol: (none)\n- The team state lives under .agent-teams/clipshare/ (team.json and inbox/*.jsonl). You may inspect these files read-only for diagnostics, but never edit them directly; use the agent_teams_* tools so JSON escaping and concurrent updates stay safe.\n- The captain and your teammates reach you through messages. Coordination arrives at your nearest model step. Apply it to your current attempt; a task assignment starts a separate turn.\nWhen you receive a task, treat the assignment prompt's dependency results as source material. Do not ignore them.\n\nWorking rules:\n1. When you receive a task assignment, call agent_teams_claim_task with the task id. Keep the returned attempt_id: include it in every agent_teams_update_task call for that execution attempt. Then mark the task in_progress.\n2. Work thoroughly with your available tools; do not cut corners.\n3. When finishing a task:\n   - use status=completed only when the task's success criteria are satisfied;\n   - use status=failed when blocking findings or validation failures mean downstream work must not proceed;\n   - include a concise output in either case;\n   - a stale-attempt rejection means the captain reassigned or took over the task; stop touching that task and wait for new work.\n   claimed cannot jump to completed. Mark in_progress first, then completed or failed.\n   Include attempt_id on every update. Then report once as described below and become idle.\n4. Send one short report with agent_teams_send_message (to=captain) when you complete a task or hit a blocker. Include source_task_id and source_attempt_id in task reports; a stale source rejection means stop, never relabel an old result with a new attempt. The captain is also your parent: this single message satisfies both reporting duties. Do not repeat it through the native send_message tool or send acknowledgments that add no new information.\n5. To ask a teammate something, use agent_teams_send_message with to=<teammate name>; the message lands in their mailbox and wakes them directly — teammates talk to each other without the captain in the loop. The same applies to the captain (to=captain).\n6. After your turn becomes idle, the shared task scheduler may assign your next ready task automatically. Never claim a second task while you still own unfinished work.\n7. If you already own an open attempt (claimed or in_progress) and receive mail, treat it as guidance for that same attempt_id unless the mail explicitly tells you to stop or fail. Do not claim a new task in that turn.\n8. Do not start a teammate's assigned task. Do not privately tell the next-stage member to start; the scheduler assigns unlocked work after you become idle.\n9. You are a worker: do not create or delete teams, reassign tasks, or add/remove members — that is the captain's job.\n10. Quality-gate kinds carry a contract (kind, objective, inScope, acceptance, verify). Stay inside inScope. Do not mark your own implementation as review pass. Review/requirements complete only with verdict=pass; needs_revision/reject must fail with findings. Mail is not a formal next review. Completed work must not be repeated to attach late evidence: call update_task on the original task with its attempt_id and acceptanceResults/commandsRun/evidence_note; supplements are append-only and cannot change its verdict.",
+        "toolFilter": {
+          "deny": [
+            "agent_teams_create",
+            "agent_teams_approve",
+            "agent_teams_edit_plan",
+            "agent_teams_add_member",
+            "agent_teams_remove_member",
+            "agent_teams_create_task",
+            "agent_teams_reassign_task",
+            "agent_teams_amend_task",
+            "agent_teams_resume",
+            "agent_teams_delete"
+          ]
+        }
+      }
+    },
+    {
+      "id": "3052ecea-90f5-4e2a-b44b-411a72420e4f",
+      "name": "core-net",
+      "role": "engineer",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "reasoningEffort": "medium",
+      "joinedAt": 1794394015684,
+      "status": "idle",
+      "runtimeSetup": {
+        "persona": "You are core-net, a member of the multi-agent team \"clipshare\" running inside DeepSeek Harness AgentTeams. The captain leads the team; you are a worker member with the role: engineer.\n\nTeam context:\n- Team id: clipshare\n- Your name inside the team (use it as `from`/identity): core-net\n- Team goal: 实现 clipshare：Go 单二进制、对称 P2P 的局域网剪贴板共享工具（Ubuntu + Windows）。spec 与任务拆解已定稿在 docs/superpowers/specs/，M1（model/config/history）已完成并提交。\n- Profile protocol: (none)\n- The team state lives under .agent-teams/clipshare/ (team.json and inbox/*.jsonl). You may inspect these files read-only for diagnostics, but never edit them directly; use the agent_teams_* tools so JSON escaping and concurrent updates stay safe.\n- The captain and your teammates reach you through messages. Coordination arrives at your nearest model step. Apply it to your current attempt; a task assignment starts a separate turn.\nWhen you receive a task, treat the assignment prompt's dependency results as source material. Do not ignore them.\n\nWorking rules:\n1. When you receive a task assignment, call agent_teams_claim_task with the task id. Keep the returned attempt_id: include it in every agent_teams_update_task call for that execution attempt. Then mark the task in_progress.\n2. Work thoroughly with your available tools; do not cut corners.\n3. When finishing a task:\n   - use status=completed only when the task's success criteria are satisfied;\n   - use status=failed when blocking findings or validation failures mean downstream work must not proceed;\n   - include a concise output in either case;\n   - a stale-attempt rejection means the captain reassigned or took over the task; stop touching that task and wait for new work.\n   claimed cannot jump to completed. Mark in_progress first, then completed or failed.\n   Include attempt_id on every update. Then report once as described below and become idle.\n4. Send one short report with agent_teams_send_message (to=captain) when you complete a task or hit a blocker. Include source_task_id and source_attempt_id in task reports; a stale source rejection means stop, never relabel an old result with a new attempt. The captain is also your parent: this single message satisfies both reporting duties. Do not repeat it through the native send_message tool or send acknowledgments that add no new information.\n5. To ask a teammate something, use agent_teams_send_message with to=<teammate name>; the message lands in their mailbox and wakes them directly — teammates talk to each other without the captain in the loop. The same applies to the captain (to=captain).\n6. After your turn becomes idle, the shared task scheduler may assign your next ready task automatically. Never claim a second task while you still own unfinished work.\n7. If you already own an open attempt (claimed or in_progress) and receive mail, treat it as guidance for that same attempt_id unless the mail explicitly tells you to stop or fail. Do not claim a new task in that turn.\n8. Do not start a teammate's assigned task. Do not privately tell the next-stage member to start; the scheduler assigns unlocked work after you become idle.\n9. You are a worker: do not create or delete teams, reassign tasks, or add/remove members — that is the captain's job.\n10. Quality-gate kinds carry a contract (kind, objective, inScope, acceptance, verify). Stay inside inScope. Do not mark your own implementation as review pass. Review/requirements complete only with verdict=pass; needs_revision/reject must fail with findings. Mail is not a formal next review. Completed work must not be repeated to attach late evidence: call update_task on the original task with its attempt_id and acceptanceResults/commandsRun/evidence_note; supplements are append-only and cannot change its verdict.",
+        "toolFilter": {
+          "deny": [
+            "agent_teams_create",
+            "agent_teams_approve",
+            "agent_teams_edit_plan",
+            "agent_teams_add_member",
+            "agent_teams_remove_member",
+            "agent_teams_create_task",
+            "agent_teams_reassign_task",
+            "agent_teams_amend_task",
+            "agent_teams_resume",
+            "agent_teams_delete"
+          ]
+        }
+      }
+    },
+    {
+      "id": "354878e9-e14e-4cb5-8b5b-659c93a963d1",
+      "name": "ui-shell",
+      "role": "engineer",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "reasoningEffort": "medium",
+      "joinedAt": 1794394015684,
+      "status": "idle",
+      "runtimeSetup": {
+        "persona": "You are ui-shell, a member of the multi-agent team \"clipshare\" running inside DeepSeek Harness AgentTeams. The captain leads the team; you are a worker member with the role: engineer.\n\nTeam context:\n- Team id: clipshare\n- Your name inside the team (use it as `from`/identity): ui-shell\n- Team goal: 实现 clipshare：Go 单二进制、对称 P2P 的局域网剪贴板共享工具（Ubuntu + Windows）。spec 与任务拆解已定稿在 docs/superpowers/specs/，M1（model/config/history）已完成并提交。\n- Profile protocol: (none)\n- The team state lives under .agent-teams/clipshare/ (team.json and inbox/*.jsonl). You may inspect these files read-only for diagnostics, but never edit them directly; use the agent_teams_* tools so JSON escaping and concurrent updates stay safe.\n- The captain and your teammates reach you through messages. Coordination arrives at your nearest model step. Apply it to your current attempt; a task assignment starts a separate turn.\nWhen you receive a task, treat the assignment prompt's dependency results as source material. Do not ignore them.\n\nWorking rules:\n1. When you receive a task assignment, call agent_teams_claim_task with the task id. Keep the returned attempt_id: include it in every agent_teams_update_task call for that execution attempt. Then mark the task in_progress.\n2. Work thoroughly with your available tools; do not cut corners.\n3. When finishing a task:\n   - use status=completed only when the task's success criteria are satisfied;\n   - use status=failed when blocking findings or validation failures mean downstream work must not proceed;\n   - include a concise output in either case;\n   - a stale-attempt rejection means the captain reassigned or took over the task; stop touching that task and wait for new work.\n   claimed cannot jump to completed. Mark in_progress first, then completed or failed.\n   Include attempt_id on every update. Then report once as described below and become idle.\n4. Send one short report with agent_teams_send_message (to=captain) when you complete a task or hit a blocker. Include source_task_id and source_attempt_id in task reports; a stale source rejection means stop, never relabel an old result with a new attempt. The captain is also your parent: this single message satisfies both reporting duties. Do not repeat it through the native send_message tool or send acknowledgments that add no new information.\n5. To ask a teammate something, use agent_teams_send_message with to=<teammate name>; the message lands in their mailbox and wakes them directly — teammates talk to each other without the captain in the loop. The same applies to the captain (to=captain).\n6. After your turn becomes idle, the shared task scheduler may assign your next ready task automatically. Never claim a second task while you still own unfinished work.\n7. If you already own an open attempt (claimed or in_progress) and receive mail, treat it as guidance for that same attempt_id unless the mail explicitly tells you to stop or fail. Do not claim a new task in that turn.\n8. Do not start a teammate's assigned task. Do not privately tell the next-stage member to start; the scheduler assigns unlocked work after you become idle.\n9. You are a worker: do not create or delete teams, reassign tasks, or add/remove members — that is the captain's job.\n10. Quality-gate kinds carry a contract (kind, objective, inScope, acceptance, verify). Stay inside inScope. Do not mark your own implementation as review pass. Review/requirements complete only with verdict=pass; needs_revision/reject must fail with findings. Mail is not a formal next review. Completed work must not be repeated to attach late evidence: call update_task on the original task with its attempt_id and acceptanceResults/commandsRun/evidence_note; supplements are append-only and cannot change its verdict.",
+        "toolFilter": {
+          "deny": [
+            "agent_teams_create",
+            "agent_teams_approve",
+            "agent_teams_edit_plan",
+            "agent_teams_add_member",
+            "agent_teams_remove_member",
+            "agent_teams_create_task",
+            "agent_teams_reassign_task",
+            "agent_teams_amend_task",
+            "agent_teams_resume",
+            "agent_teams_delete"
+          ]
+        }
+      }
+    },
+    {
+      "id": "b359d550-f7d7-4dc3-a7c8-4b76c1d3ee7e",
+      "name": "verifier",
+      "role": "reviewer",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "reasoningEffort": "medium",
+      "joinedAt": 1794394015684,
+      "status": "idle",
+      "runtimeSetup": {
+        "persona": "You are verifier, a member of the multi-agent team \"clipshare\" running inside DeepSeek Harness AgentTeams. The captain leads the team; you are a worker member with the role: reviewer.\n\nTeam context:\n- Team id: clipshare\n- Your name inside the team (use it as `from`/identity): verifier\n- Team goal: 实现 clipshare：Go 单二进制、对称 P2P 的局域网剪贴板共享工具（Ubuntu + Windows）。spec 与任务拆解已定稿在 docs/superpowers/specs/，M1（model/config/history）已完成并提交。\n- Profile protocol: (none)\n- The team state lives under .agent-teams/clipshare/ (team.json and inbox/*.jsonl). You may inspect these files read-only for diagnostics, but never edit them directly; use the agent_teams_* tools so JSON escaping and concurrent updates stay safe.\n- The captain and your teammates reach you through messages. Coordination arrives at your nearest model step. Apply it to your current attempt; a task assignment starts a separate turn.\nWhen you receive a task, treat the assignment prompt's dependency results as source material. Do not ignore them.\n\nWorking rules:\n1. When you receive a task assignment, call agent_teams_claim_task with the task id. Keep the returned attempt_id: include it in every agent_teams_update_task call for that execution attempt. Then mark the task in_progress.\n2. Work thoroughly with your available tools; do not cut corners.\n3. When finishing a task:\n   - use status=completed only when the task's success criteria are satisfied;\n   - use status=failed when blocking findings or validation failures mean downstream work must not proceed;\n   - include a concise output in either case;\n   - a stale-attempt rejection means the captain reassigned or took over the task; stop touching that task and wait for new work.\n   claimed cannot jump to completed. Mark in_progress first, then completed or failed.\n   Include attempt_id on every update. Then report once as described below and become idle.\n4. Send one short report with agent_teams_send_message (to=captain) when you complete a task or hit a blocker. Include source_task_id and source_attempt_id in task reports; a stale source rejection means stop, never relabel an old result with a new attempt. The captain is also your parent: this single message satisfies both reporting duties. Do not repeat it through the native send_message tool or send acknowledgments that add no new information.\n5. To ask a teammate something, use agent_teams_send_message with to=<teammate name>; the message lands in their mailbox and wakes them directly — teammates talk to each other without the captain in the loop. The same applies to the captain (to=captain).\n6. After your turn becomes idle, the shared task scheduler may assign your next ready task automatically. Never claim a second task while you still own unfinished work.\n7. If you already own an open attempt (claimed or in_progress) and receive mail, treat it as guidance for that same attempt_id unless the mail explicitly tells you to stop or fail. Do not claim a new task in that turn.\n8. Do not start a teammate's assigned task. Do not privately tell the next-stage member to start; the scheduler assigns unlocked work after you become idle.\n9. You are a worker: do not create or delete teams, reassign tasks, or add/remove members — that is the captain's job.\n10. Quality-gate kinds carry a contract (kind, objective, inScope, acceptance, verify). Stay inside inScope. Do not mark your own implementation as review pass. Review/requirements complete only with verdict=pass; needs_revision/reject must fail with findings. Mail is not a formal next review. Completed work must not be repeated to attach late evidence: call update_task on the original task with its attempt_id and acceptanceResults/commandsRun/evidence_note; supplements are append-only and cannot change its verdict.",
+        "toolFilter": {
+          "deny": [
+            "agent_teams_create",
+            "agent_teams_approve",
+            "agent_teams_edit_plan",
+            "agent_teams_add_member",
+            "agent_teams_remove_member",
+            "agent_teams_create_task",
+            "agent_teams_reassign_task",
+            "agent_teams_amend_task",
+            "agent_teams_resume",
+            "agent_teams_delete"
+          ]
+        }
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "profileSeedId": "t1",
+      "subject": "定义 internal/engine 契约层（只放类型与接口）",
+      "description": "目的：解除 ui-shell 与 core-net 的等待，让三方并行。\n\n新建 `internal/engine/contract.go`（只此一个文件，只放类型和接口，不放实现），必须编译通过：\n\n```go\npackage engine\n\nimport \"clipshare/internal/model\"\n\n// Snapshot 是给托盘/Web UI 的状态快照。\ntype Snapshot struct {\n\tNodeName  string\n\tRoomHash  string\n\tPaused    bool\n\tAutoApply bool\n\tMDNS      bool\n\tPeers     int\n\tLastError string\n\tRecent    []model.Entry // 最新在前\n}\n\n// Controller 是 engine 暴露给界面的全部能力。tray 与 webui 只依赖它。\ntype Controller interface {\n\tSnapshot() Snapshot\n\tListEntries() []model.Entry\n\tPullEntry(id string) error   // S3：取回到本机剪贴板，不广播\n\tPushCurrent() error          // S4：强制广播当前剪贴板\n\tSetPaused(bool)\n\tSetAutoApply(bool) error\n\tSetMDNS(bool) error\n\tClearHistory() error\n}\n```\n\n每个方法写一行注释说明语义，并标注对应的 spec 条目（S1–S8，见 design §5）。\n\n必读：`docs/superpowers/specs/2026-11-11-lan-clipboard-design.md` §3（组件契约）、§5（同步语义）。\n\n验证：`go build ./... && go vet ./...` 通过。\n约束：不改 internal/engine/ 以外的任何文件；不执行任何 git 命令（captain 统一提交）。\n完成后立刻报告，t3（ui-shell）在等这个契约。",
+      "status": "completed",
+      "assignee": "engine-core",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1794394015684,
+      "updatedAt": 1794394058902,
+      "attemptId": "e807028f-38d9-46ee-a147-998ffa8c4e23",
+      "reassigning": false,
+      "output": "新建 internal/engine/contract.go（唯一改动文件，仅类型+接口，无实现）：package engine；Snapshot 结构体（NodeName/RoomHash/Paused/AutoApply/MDNS/Peers/LastError/Recent 最新在前）；Controller 接口 8 个方法，签名与任务给定契约逐字一致。每个方法带一行语义注释并标注 spec 条目：Snapshot→§5 可观测状态、ListEntries→S1/S2/S6、PullEntry→S3（写回不广播）、PushCurrent→S4（绕过 suppress，含 S7 不重试/S8 超限跳过）、SetPaused→S5、SetAutoApply→S2、SetMDNS→design §7、ClearHistory→本地清理不广播。另加包注释说明本文件只放契约、同步语义实现见 design §5。验证：go build ./...、go vet ./...、gofmt -l 全部通过。未改动 internal/engine/ 以外文件，未执行任何 git 命令。",
+      "changedPaths": [
+        "internal/engine/contract.go"
+      ],
+      "commandsRun": [
+        {
+          "command": "go build ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "编译通过，无输出"
+        },
+        {
+          "command": "go vet ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "vet 通过，无告警"
+        },
+        {
+          "command": "gofmt -l internal/engine",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无输出，格式合规"
+        }
+      ]
+    },
+    {
+      "id": "t2",
+      "profileSeedId": "t2",
+      "subject": "实现 internal/clip 与 internal/sync 及其单测",
+      "description": "必读：`docs/superpowers/specs/2026-11-11-lan-clipboard-design.md` §6（协议）、§8（剪贴板适配）、§10（错误处理表）、§11（测试策略）。\n\n**A. internal/clip**\n```go\ntype Clipboard interface {\n\tRead() (string, error)  // 空字符串 = 当前剪贴板没有文本（如图片）\n\tWrite(s string) error\n}\nfunc New() (Clipboard, error)          // 基于 github.com/atotto/clipboard 的适配器\nfunc CheckAvailable() error            // 启动自检，缺失命令返回可执行的错误信息\nfunc NewPoller(c Clipboard, interval time.Duration, onChange func(string)) *Poller\nfunc (p *Poller) Start(); func (p *Poller) Stop()\nfunc (p *Poller) MarkSeen(content string) // 程序自己写剪贴板后调用，抑制自身写入触发 OnChange\n```\n- 变更检测用「上次读到的内容」，**不要用 suppress 标志位**（会因标志未消费而误吞用户后续同样的复制）。MarkSeen 直接改写 lastSeen。\n- 归一化调用 `model.Normalize`；空/超限由调用方判断，Poller 只管检测变化。\n- 平台自检用 build tag 分文件：`check_linux.go`（X11 需 xclip 或 xsel；有 WAYLAND_DISPLAY 则需 wl-paste+wl-copy）、`check_windows.go`（恒 nil）。\n\n**B. internal/sync**\n```go\ntype ServerConfig struct{ RoomKey, RoomHash, NodeID, NodeName, Version string; MaxBytes int }\nfunc NewServer(cfg ServerConfig, store *history.Store, apply func(model.Entry)) *Server\nfunc (s *Server) Handler() http.Handler   // 必须能用 httptest 直接测\n\ntype Peer struct{ NodeID, Name, BaseURL string }\ntype Client struct{ Timeout time.Duration } // 默认 3s\nfunc (c *Client) Post(ctx context.Context, p Peer, roomKey string, e model.Entry) error\nfunc NewBroadcaster(c *Client, peers func() []Peer) *Broadcaster\nfunc (b *Broadcaster) Broadcast(e model.Entry) []Result // 每 peer 一个 goroutine + WaitGroup，单个失败不影响其他\n```\n- 路由用 Go 1.22+ 方法模式：`POST /v1/items`、`GET /v1/health`。\n- `/v1/items`：校验 `Authorization: Bearer <roomKey>` 不符→401；`X-Room: <roomHash>` 不符→403；内容空或超 MaxBytes→400；命中 store 内容去重（store.Add 返回 false）→202 且不调用 apply；成功→202 并调用 `apply(entry)`。\n- 收到的条目**用服务端本地时间重写 RecvAt**（不信任发送方时钟）。\n- `/v1/health` 免鉴权，返回 `{nodeId,name,version,roomHash}`。\n- 广播不重试（spec S7），失败只通过 Result 返回错误。\n\n验证：`go test ./internal/clip/ ./internal/sync/ -race` 全绿；httptest 覆盖 202/400/401/403/health/去重；广播单 peer 失败不影响其他 peer。\n约束：只写 `internal/clip/`、`internal/sync/`；不执行 git 命令；需要改 model/config/history 时先报告 captain。",
+      "status": "completed",
+      "assignee": "core-net",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1794394015684,
+      "updatedAt": 1794394469135,
+      "attemptId": "7f164572-4b6b-42c1-aaa2-f2fc70192207",
+      "reassigning": false,
+      "output": "internal/clip 与 internal/sync 实现完成，单测全绿（-race，重复 5 轮无抖动）。\n\nA. internal/clip\n- Clipboard 接口 + atotto 适配器 Adapter；New() 先做启动自检；读错误分流：命令退出码非零（空剪贴板/图片）→ (\"\", nil)，命令缺失 → 包装 ErrUnavailable。\n- CheckAvailable 按 build tag 分文件：check_linux.go（Wayland 需 wl-paste+wl-copy，X11 需 xclip 或 xsel，无图形会话直接报错，错误信息带 apt install 命令）、check_windows.go（恒 nil）、check_other.go（darwin 等恒 nil）。\n- Poller：lastSeen 变更检测（无 suppress 标志位），Start 首次读建立基线（启动前的剪贴板内容不算用户复制，不触发启动广播）；MarkSeen 直接改写 lastSeen + primed，并做 model.Normalize；回调在锁外执行，回调内 MarkSeen 不死锁；Stop 幂等且可先于 Start；读失败跳过本轮保留基线；复制图片（变空）照常回调空串，由调用方判断。\n- Windows OpenClipboard 占用按 spec §10 重试 3 次（20/60/150ms，retry_windows.go），非 Windows 无重试。\n\nB. internal/sync\n- 路由用 Go 1.22 方法模式：POST /v1/items、GET /v1/health（其它方法自动 405）。\n- /v1/items：Authorization Bearer 定长比较不符→401；X-Room 不符→403；请求体上限 MaxBytes+4096 信封余量，内容空/超 MaxBytes/非法 JSON→400；store.Add 返回 false→202 且不 apply；成功→202 并 apply。收到后用服务端本地时间重写 RecvAt，并按 origin+content 规范化 ID（不信任发送方）。\n- /v1/health 免鉴权，返回 {nodeId,name,version,roomHash}（与 discovery.healthInfo 兼容）；RoomHash 为空时由 RoomKey 推导。\n- Client{Timeout}（默认 3s，context 超时）Post：Bearer + X-Room(model.RoomHash) + JSON；非 2xx 返回 *PostError（带 Status 与对端称呼）；不重试。\n- Broadcaster：每 peer 一个 goroutine + WaitGroup，结果按 peers() 顺序返回；单个失败只落在自己的 Result；不重试。新增 SetRoomKey/RoomKey（构造签名保持任务约定，roomKey 缺失时每个 peer 明确报错且不发请求）。\n\n测试：40 个 Test 函数，含 httptest 覆盖 202/400/401/403/405/404/health/去重/recvAt 重写/ID 规范化；广播 3 peer（正常 + 500 + 拒连）隔离失败；并发广播 5×3 peer 无串数据；Poller 基线/MarkSeen 抑制/归一化/读错误/Stop/回调内 MarkSeen 不死锁/默认间隔。\n\n给 t7（engine）的两点接口提示：1) Broadcaster 需在启动时 SetRoomKey(cfg.RoomKey)；2) discovery.Peer 与 sync.Peer 字段相同但是不同类型，需逐项转换。go.mod 中 atotto/clipboard 仍标 // indirect（仅注释层面，未改 go.mod，留给收尾 tidy）。",
+      "changedPaths": [
+        "internal/clip/clip.go",
+        "internal/clip/poller.go",
+        "internal/clip/check_linux.go",
+        "internal/clip/check_windows.go",
+        "internal/clip/check_other.go",
+        "internal/clip/retry_windows.go",
+        "internal/clip/retry_other.go",
+        "internal/clip/clip_test.go",
+        "internal/clip/poller_test.go",
+        "internal/clip/check_linux_test.go",
+        "internal/clip/check_windows_test.go",
+        "internal/sync/server.go",
+        "internal/sync/client.go",
+        "internal/sync/broadcast.go",
+        "internal/sync/server_test.go",
+        "internal/sync/client_test.go",
+        "internal/sync/broadcast_test.go"
+      ],
+      "acceptanceResults": [
+        {
+          "criterion": "go test ./internal/clip/ ./internal/sync/ -race 全绿",
+          "status": "passed",
+          "evidence": "go test ./internal/clip/ ./internal/sync/ -race -count=1 → ok clip/share/internal/clip 1.47s、ok clipshare/internal/sync 1.32s；-count=5 亦全绿（无时序抖动）"
+        },
+        {
+          "criterion": "httptest 覆盖 202/400/401/403/health/去重",
+          "status": "passed",
+          "evidence": "TestItemsAccepted(202)、TestItemsBadRequest(空/归一化后空/超限/恰好等于上限/非法 JSON/字段类型错误/超大请求体)、TestItemsUnauthorized(缺头/错 key/错 scheme/空 token/无 scheme)、TestItemsForbiddenRoom(缺 X-Room/不匹配)、TestHealth、TestItemsDedupe(两次 202 且 apply 仅 1 次)"
+        },
+        {
+          "criterion": "广播单 peer 失败不影响其他 peer",
+          "status": "passed",
+          "evidence": "TestBroadcastIsolatesPeerFailure：正常 peer 202 且内容入历史，500 peer Status=500，拒连 peer Err 非空 Status=0，正常 peer 不受影响；TestBroadcastConcurrent 并发 5×3 全绿"
+        },
+        {
+          "criterion": "Poller 用 lastSeen 变更检测，MarkSeen 直接改写 lastSeen（无 suppress 标志位）",
+          "status": "passed",
+          "evidence": "poller.go 无 suppress 字段；TestPollerMarkSeenSuppressesOwnWrite 断言自身写入不回调、随后用户复制仍触发；TestPollerMarkSeenNormalizes 验证 \\r\\n/\\n 归一化后不误触发；TestPollerMarkSeenFromCallbackNoDeadlock 验证回调内 MarkSeen 不吞后续变化"
+        },
+        {
+          "criterion": "平台自检按 build tag 分文件（Linux/Wayland/X11、Windows）",
+          "status": "passed",
+          "evidence": "check_linux.go 五种场景单测（xclip/xsel/wl 齐全/缺工具/无图形会话），check_windows.go 恒 nil + windows 单测，GOOS=windows go build/vet 通过"
+        },
+        {
+          "criterion": "收到条目用服务端本地时间重写 RecvAt",
+          "status": "passed",
+          "evidence": "TestItemsAccepted 发送方 recvAt=now+1h，服务端入库 recvAt 与本地时间差 <5s 且 ID 按 origin+content 重新推导"
+        }
+      ],
+      "commandsRun": [
+        {
+          "command": "go test ./internal/clip/ ./internal/sync/ -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "ok clipshare/internal/clip 1.466s; ok clipshare/internal/sync 1.320s"
+        },
+        {
+          "command": "go test ./internal/clip/ ./internal/sync/ -race -count=5",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "ok clipshare/internal/clip 3.303s; ok clipshare/internal/sync 2.569s（无偶发失败）"
+        },
+        {
+          "command": "go vet ./internal/clip/ ./internal/sync/",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无输出，VET_OK"
+        },
+        {
+          "command": "gofmt -l internal/clip internal/sync",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无输出（格式干净）"
+        },
+        {
+          "command": "GOOS=windows GOARCH=amd64 go build ./internal/clip/ ./internal/sync/ && GOOS=windows GOARCH=amd64 go vet ./internal/clip/ ./internal/sync/",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "WINDOWS_BUILD_OK / WINDOWS_VET_OK；另 GOOS=darwin GOARCH=arm64 go build ./internal/clip/ 通过"
+        },
+        {
+          "command": "go vet ./... && go test ./... -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "全模块 vet 通过；clip/config/discovery/history/model/sync/tray/webui 全部 ok（engine 无测试文件）"
+        }
+      ]
+    },
+    {
+      "id": "t3",
+      "profileSeedId": "t3",
+      "subject": "实现 internal/tray 与 internal/webui",
+      "description": "必读：`docs/superpowers/specs/2026-11-11-lan-clipboard-design.md` §9（托盘与 Web UI）、§10。依赖 t1 产出的 `engine.Controller` / `engine.Snapshot`——**只依赖该接口，不要 import engine 的实现**。\n\n**A. internal/tray**（库 `github.com/energye/systray v1.0.3`，已在本机 module cache 验证可免 cgo 双平台编译）\n```go\nfunc Run(ctrl engine.Controller, opts Options) // 阻塞直到退出\n\ntype Options struct {\n\tUIAddr    string // http://127.0.0.1:47100/ui\n\tConfigDir string\n\tVersion   string\n\tOpenURL   func(string) error // 便于测试注入\n}\n```\n**关键实现约束（已 spike 确认）**：该库**没有 RemoveMenuItem，只有 ResetMenu()**（全清重建会闪烁）。因此：\n- 创建**固定的 10 个历史条目槽位**，回调闭包捕获索引 `i` 而非条目值；\n- 刷新用 `SetTitle` + `Show/Hide` + `Enable/Disable` 改内容，**绝不调用 ResetMenu**；\n- 刷新节流：每 1s 轮询 `ctrl.Snapshot()`，只有内容变化才更新。\n菜单结构见 spec §9（标题行/状态行/10 条/查看全部历史/发送当前剪贴板/三个勾选项/打开配置目录/退出）。\n图标：**运行时用 image/png 生成**（不要提交二进制资源）。32x32，三态配色（正常=绿、暂停=橙、零 peers=灰）。Windows 需要 .ico：把 PNG 包成 ICO 头（ICO 支持内嵌 PNG，Vista+ 支持），用 build tag 分平台选择。\n\n**B. internal/webui**\n```go\nfunc Handler(ctrl engine.Controller) http.Handler\n```\n- `go:embed` 单页 `index.html`，原生 JS，无框架无构建步骤，≤250 行。\n- `GET /ui` 页面；`GET /ui/api/entries` 返回 `[]model.Entry`；`POST /ui/api/pull {\"id\":\"...\"}`；`POST /ui/api/clear`。\n- 页面：搜索框（本地过滤）、列表（时间/来源标签/内容预览）、每行「复制到本机」按钮、清空需二次确认。\n- 审美要求：像正经工具不像 demo（系统字体栈、等宽字体显示内容片段、深色适配 `prefers-color-scheme`）。\n\n验证：`go test ./internal/webui/ -race`（用假 Controller 覆盖三个 API + 清空）；`CGO_ENABLED=0 go build ./internal/tray/` 与 `GOOS=windows CGO_ENABLED=0 go build ./internal/tray/` 均通过。\n约束：只写 `internal/tray/`、`internal/webui/`；不执行 git 命令；TRay 真实弹出需人工验收，不要求你启动图形会话。",
+      "status": "completed",
+      "assignee": "ui-shell",
+      "dependencies": [
+        "t1"
+      ],
+      "attempt": 1,
+      "createdAt": 1794394015684,
+      "updatedAt": 1794394790185,
+      "attemptId": "f0b0aaa8-8250-44d9-a10c-1c43ad77ee47",
+      "reassigning": false,
+      "output": "实现 internal/tray 与 internal/webui，只依赖 engine.Controller 契约（不 import engine 实现）。\n\nA. internal/tray（tray.go / icon.go / icon_other.go / icon_windows.go / open.go）\n- Run(ctrl engine.Controller, opts Options) 阻塞至退出；Options{UIAddr,ConfigDir,Version,OpenURL}。\n- 菜单启动时一次性建好固定条目：禁用标题行「clipshare · <nodeName> · <房间码前6位>」（节点名超 24 字截断）、禁用状态行（已暂停/无可用节点/与 N 台同步中）、10 个历史槽位、查看全部历史…、发送当前剪贴板、三个勾选项（暂停同步/自动应用远端剪贴板/启用 mDNS 发现）、打开配置目录（ConfigDir 空则置灰）、退出。\n- 槽位回调闭包只捕获索引 i，条目 ID 存槽位缓存，点击时查 ID 再调 PullEntry；刷新只用 SetTitle/SetTooltip/Show/Hide/Enable/Disable/Check/Uncheck，全程不调用 ResetMenu（该库无 RemoveMenuItem），按 ID+可见性逐项 diff，无变化不碰菜单。\n- 每 1s 轮询 ctrl.Snapshot() 并节流刷新；所有点击回调都 go 出去，不阻塞原生 UI 线程；refresh 用互斥量串行化。\n- 图标运行时用 image/png 生成：32x32 圆角剪贴板 + 三态配色（绿 #2fa84f / 橙 #e88b2e / 灰 #8a9099），4x 超采样降采样抗锯齿；icon_windows.go（build tag windows）用 wrapICO 把 PNG 包成 ICO（Vista+ 内嵌 PNG），icon_other.go 直接用 PNG。仓库无二进制资源。\n- Options.OpenURL 默认实现 openTarget：windows=rundll32/explorer，darwin=open，其他=xdg-open；Start 后 Wait 回收子进程（避免僵尸）。\n- 单测 tray_test.go：标题/状态/槽位文案/截断、tooltip、iconStateFor、PNG 像素（板身色、内容行、透明角）、ICO 头字段与内嵌 PNG；平台差异用 icon_other_test.go / icon_windows_test.go 分文件断言（Windows 上应给 ICO）。\n\nB. internal/webui（webui.go + index.html + webui_test.go）\n- Handler(ctrl engine.Controller) http.Handler；go:embed 单页 index.html，原生 JS/无框架/无构建步骤，249 行（≤250）。\n- 路由：GET /ui、GET /ui/api/entries（nil→[]）、POST /ui/api/pull {\"id\"}（204；坏 JSON/缺 id 400；PullEntry 错误 404，按契约「只在找不到条目时报错」）、POST /ui/api/clear（204/500）；另加 GET /{$}→/ui 重定向；页面与 entries 带 no-store/no-cache 与 nosniff。\n- 页面：搜索框本地过滤、行内时间/来源标签/等宽内容预览（超长渐隐 + 4000 字截断）、每行「复制到本机」带 toast 与 1.4s 回显、清空为内联二次确认（取消/确认清空）、4s 自动刷新（页面隐藏时跳过）、/ 聚焦搜索、Esc 清空搜索；系统字体栈 + ui-monospace 内容、prefers-color-scheme 深色、无横向溢出。\n- 用真实 HTTP 服务 + headless Chrome（CDP）实测：4 行渲染/4 个复制按钮、搜索 winbox→1 行、无匹配文案、真实 keydown 的 Esc 清空、复制→「已复制」+toast+1.4s 复位、清空二次确认与取消、清空后空态、深色 body bg rgb(21,23,27)、scrollWidth==innerWidth。\n\n验证（全部通过）：gofmt -l 空；go vet（linux 与 GOOS=windows）通过；go test ./internal/webui/ -race 与 ./internal/tray/ -race 通过；CGO_ENABLED=0 go build ./internal/tray/、GOOS=windows CGO_ENABLED=0 go build ./internal/tray/ 通过；GOOS=windows CGO_ENABLED=0 go test -c 亦可编译；全仓 go build ./... 当时通过。\n\n约束遵守：只新增/修改 internal/tray/ 与 internal/webui/；未执行任何 git 命令；未启动图形会话。\n\n待人工验收：托盘真实弹出与点击（GNOME AppIndicator / Windows 桌面会话）。集成提示：tray.Run 阻塞，按 systray 要求在主 goroutine 调用；--no-tray 时不调用即可。Web UI 用 mux.Handle(\"/\", webui.Handler(ctrl)) 挂根路由（自带 /ui 前缀），服务器必须只绑 127.0.0.1（本包无鉴权）。托盘「发送当前剪贴板」直接调 PushCurrent()，错误只记日志（S7）。entries 一次全量返回（history 上限 500 条），页面本地过滤，未做服务端分页（已在 webui.go 注释说明）。",
+      "changedPaths": [
+        "internal/tray/tray.go",
+        "internal/tray/icon.go",
+        "internal/tray/icon_other.go",
+        "internal/tray/icon_windows.go",
+        "internal/tray/open.go",
+        "internal/tray/tray_test.go",
+        "internal/tray/icon_other_test.go",
+        "internal/tray/icon_windows_test.go",
+        "internal/webui/webui.go",
+        "internal/webui/index.html",
+        "internal/webui/webui_test.go"
+      ],
+      "acceptanceResults": [
+        {
+          "criterion": "internal/tray：Run/Options 契约一致，固定 10 个历史槽位，回调捕获索引，刷新只用 SetTitle/Show/Hide/Enable/Disable 且不调用 ResetMenu",
+          "status": "passed",
+          "evidence": "tray.go: buildMenu 一次性建 10 槽（idx := i 闭包）、title/status 禁用、3 个 AddMenuItemCheckbox、打开配置目录可置灰、退出→systray.Quit；syncSlots 按 ID+slotShown 逐项 diff，只用 SetTitle/SetTooltip/Show/Hide。grep ResetMenu 仅命中注释。"
+        },
+        {
+          "criterion": "托盘刷新节流：每 1s 轮询 ctrl.Snapshot()，只有内容变化才更新",
+          "status": "passed",
+          "evidence": "tray.go loop(): time.NewTicker(refreshInterval=1s)；refresh() 调 ctrl.Snapshot() 后由 syncTitle/syncStatus/syncSlots/syncChecks/syncIcon 各自与缓存比较，未变化不下发任何菜单/D-Bus 更新。"
+        },
+        {
+          "criterion": "三态图标运行时以 image/png 生成（32x32，绿/橙/灰），Windows 用 build tag 选择 ICO 封装，不提交二进制资源",
+          "status": "passed",
+          "evidence": "icon.go renderPNG 4x 超采样降采样得到 32x32 PNG，iconColors 三态；icon_other.go(!windows) 直传 PNG，icon_windows.go(windows) 调 wrapICO；file 验证 /tmp/icon_normal.ico 为 'MS Windows icon resource - 1 icon, 32x32 with PNG image data'；PNG 像素断言：板身 #2fa84f、内容行白 90%、四角透明、三态字节各不相同。"
+        },
+        {
+          "criterion": "internal/webui：Handler(ctrl) + go:embed 单页（原生 JS，≤250 行），四个路由行为正确",
+          "status": "passed",
+          "evidence": "webui.go Handler + index.html 249 行；go test -race 覆盖：GET /ui 200 text/html 且含各 API 路径、GET /ui/api/entries 200 application/json no-store 且顺序/字段/空历史为 []、POST pull 204 且传参正确、坏 JSON/缺 id/空 id 400、PullEntry 错误 404、clear 204 且清空后 entries 为空、clear 错误 500、GET pull 与 POST entries 405、8 goroutine 并发。"
+        },
+        {
+          "criterion": "页面功能与审美：搜索框本地过滤、时间/来源标签/内容预览、每行复制到本机、清空二次确认、系统字体栈+等宽内容、深色适配",
+          "status": "passed",
+          "evidence": "headless Chrome 实测（真实 HTTP 服务）：渲染 4 行/4 个复制按钮、count '4 / 4 条'、搜索 winbox→1 行、无匹配文案、Esc 清空搜索（真实 keydown）、/ 聚焦搜索、点击复制→按钮'已复制'+toast、清空二次确认（取消/确认）、清空后 0 行并显示空态、深色 prefers-color-scheme body bg rgb(21,23,27)、scrollWidth==innerWidth 无横向溢出、内容字体为 ui-monospace 栈。"
+        },
+        {
+          "criterion": "验证：go test ./internal/webui/ -race（假 Controller 覆盖三个 API + 清空）",
+          "status": "passed",
+          "evidence": "go test ./internal/webui/ -race -count=1 → ok clipshare/internal/webui 1.010s"
+        },
+        {
+          "criterion": "验证：CGO_ENABLED=0 go build ./internal/tray/ 与 GOOS=windows CGO_ENABLED=0 go build ./internal/tray/ 均通过",
+          "status": "passed",
+          "evidence": "两条命令均 exit 0；另加 GOOS=windows CGO_ENABLED=0 go vet ./internal/tray/ ./internal/webui/ 通过、GOOS=windows CGO_ENABLED=0 go test -c ./internal/tray/ 可编译。"
+        }
+      ],
+      "commandsRun": [
+        {
+          "command": "gofmt -l internal/tray internal/webui",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无输出（全部已格式化）"
+        },
+        {
+          "command": "go vet ./internal/tray/ ./internal/webui/",
+          "status": "passed",
+          "exitCode": 0
+        },
+        {
+          "command": "go test ./internal/webui/ -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "ok clipshare/internal/webui 1.010s（11 个测试含并发与 405 分支）"
+        },
+        {
+          "command": "go test ./internal/tray/ -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "ok clipshare/internal/tray 1.047s（titleText/statusText/slotTitle/tooltipText/iconStateFor/icon 像素/ICO 头/平台封装）"
+        },
+        {
+          "command": "CGO_ENABLED=0 go build ./internal/tray/",
+          "status": "passed",
+          "exitCode": 0
+        },
+        {
+          "command": "GOOS=windows CGO_ENABLED=0 go build ./internal/tray/",
+          "status": "passed",
+          "exitCode": 0
+        },
+        {
+          "command": "CGO_ENABLED=0 go build ./internal/webui/ && GOOS=windows CGO_ENABLED=0 go build ./internal/webui/",
+          "status": "passed",
+          "exitCode": 0
+        },
+        {
+          "command": "GOOS=windows CGO_ENABLED=0 go vet ./internal/tray/ ./internal/webui/ && GOOS=windows CGO_ENABLED=0 go test -c -o /dev/null ./internal/tray/",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "Windows 侧 vet 与测试编译均通过（icon_windows_test.go 断言 ICO）"
+        },
+        {
+          "command": "go build ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "全仓构建当时通过（含队友并行提交的 sync/discovery/engine 代码）"
+        },
+        {
+          "command": "headless Chrome + 真实 httptest 服务实测页面（临时程序，已删除）",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "DOM 断言 4 行/4 复制按钮、搜索过滤 1 行、复制 toast、二次确认、清空后空态、深色 bodyBg rgb(21,23,27)、无横向溢出"
+        }
+      ]
+    },
+    {
+      "id": "t4",
+      "profileSeedId": "t4",
+      "subject": "实现 internal/engine 与 internal/discovery + 集成测",
+      "description": "必读：design §3/§4/§5（S1–S8 必须逐条落地）、§7（发现）、§10、§11。依赖 t1 的契约与 t2 的 clip/sync 实现。\n\n## 开工次序（重要：t2 未完成时也要动起来）\n\n1. **先做 A（discovery）**：它只依赖 config 与 net/http，完全独立，现在就能编译、能单测。不要空等 t2。\n2. t2 完成后再做 B（engine）。engine 代码可以提前写，但需等 t2 落地才能编译通过——这期间**不要为了「让编译变绿」而在自己 scope 里造 clip/sync 的替身包**。\n\n## 已钉死的上游 API（由 captain 在 t2 任务中逐字指定，不必猜测，按此编码）\n\n`internal/clip`：\n```go\ntype Clipboard interface {\n    Read() (string, error)  // 空字符串 = 当前剪贴板没有文本（如图片）\n    Write(s string) error\n}\nfunc New() (Clipboard, error)\nfunc CheckAvailable() error\nfunc NewPoller(c Clipboard, interval time.Duration, onChange func(string)) *Poller\nfunc (p *Poller) Start()\nfunc (p *Poller) Stop()\nfunc (p *Poller) MarkSeen(content string) // 程序写入剪贴板后调用，抑制自身写入触发 OnChange\n```\n\n`internal/sync`：\n```go\ntype ServerConfig struct{ RoomKey, RoomHash, NodeID, NodeName, Version string; MaxBytes int }\nfunc NewServer(cfg ServerConfig, store *history.Store, apply func(model.Entry)) *Server\nfunc (s *Server) Handler() http.Handler\n\ntype Peer struct{ NodeID, Name, BaseURL string }\ntype Client struct{ Timeout time.Duration }\nfunc (c *Client) Post(ctx context.Context, p Peer, roomKey string, e model.Entry) error\nfunc NewBroadcaster(c *Client, peers func() []Peer) *Broadcaster\nfunc (b *Broadcaster) Broadcast(e model.Entry) []Result\n```\n\n**职责边界（避免「重复入历史」这个最易犯的错）**：`sync.Server` 自己负责 `store.Add` 与内容去重，**只在 store.Add 返回 true 时**调用 `apply(entry)`。因此 engine 传给它的 `apply` 回调**只做两件事**：写本机剪贴板 + `poller.MarkSeen`，**绝不能再 Add 一次历史**。\n\n## A. internal/discovery\n```go\ntype Peer struct{ NodeID, Name, BaseURL string }\ntype Config struct{ NodeID, NodeName, RoomHash, Version string; Port int; Seeds []string; MDNS bool }\nfunc New(cfg Config, onUpdate func([]Peer)) *Finder\nfunc (f *Finder) Start() error; func (f *Finder) Stop()\n```\n- mDNS：`github.com/grandcat/zeroconf`，服务类型 `_clipshare._tcp`，TXT `room=<hash>/node=<id>/name=<name>/ver=1`。\n- 只接受 TXT 里 room 与自身一致的实例；按 deviceId 去重；排除自身 NodeID。\n- 静态 seeds：每 30s `GET /v1/health`（用 `config.BaseURL`），roomHash 匹配且 nodeId≠自身才收编。\n- `MDNS=false` 时只走 seeds（这是禁多播网络的唯一路径，必须真的可用）。\n- 解析/过滤逻辑抽成纯函数以便单测。\n\n## B. internal/engine\n实现 t1 的 `Controller`，并组装 clip.Poller + history.Store + sync.Server/Client/Broadcaster + discovery.Finder。\n```go\nfunc New(cfg *config.Config, store *history.Store, clip clip.Clipboard, logf func(string, ...any)) *Engine\nfunc (e *Engine) Start() error   // 起 HTTP server、discovery、poller\nfunc (e *Engine) Stop()\n```\n- S1 本机复制→入历史+广播（暂停不广播）；S2 收到远端→写剪贴板 + `MarkSeen`（入历史由 sync.Server 负责，见上方职责边界）；S3 取回→写剪贴板+`MarkSeen` 不广播；S4 强制广播；S5 暂停；S6 去重；S7 失败不重试；S8 超限跳过。\n- **核心不变量：任何程序写入的远端内容不得被轮询当成用户复制而回播**。用 `MarkSeen` 实现（无状态残留，不要引入 suppress 标志位），写进代码注释。\n- 端口被占用时 Start 返回可读错误（提示改 port）。\n\n## C. 集成测（进程内）\n两个 Engine 实例，各自假 Clipboard + 独立端口（随机高位端口）+ 同一 roomKey，验证：A 复制→B 剪贴板与历史更新→**不回环（B 不反向广播，A 历史不新增）**；暂停生效；取回不广播；重复内容不重复入历史。\n\n验证：`go test ./internal/discovery/ ./internal/engine/ -race` 全绿，且 `go test ./... -race` 全绿。\n约束：只写 `internal/engine/`（contract.go 之外的新文件）、`internal/discovery/`；不改 t2 的包（发现问题报告 captain）；不执行 git 命令。",
+      "status": "completed",
+      "assignee": "engine-core",
+      "dependencies": [
+        "t1",
+        "t2"
+      ],
+      "attempt": 2,
+      "createdAt": 1794394015684,
+      "updatedAt": 1794395141916,
+      "reassigning": false,
+      "attemptId": "598abcfd-6dad-4001-8be9-76be67ded997",
+      "output": "t4 完成：internal/discovery（A）+ internal/engine（B）+ 进程内集成测（C）全部落地，只改 internal/engine/ 与 internal/discovery/ 共 7 个文件，未动 t2 的 clip/sync，未执行 git。\n\nA. internal/discovery（4 文件）\n- Finder/Peer/Config + New/Start/Stop；mDNS 公告（_clipshare._tcp，TXT room/node/name/ver）与订阅、按 deviceId 去重、排除自身、mDNS TTL 120s 过期回收。\n- seeds：立即探活 + 每 30s GET /v1/health（config.BaseURL），roomHash 匹配且 nodeId≠自身才收编；MDNS=false 时只走 seeds（TestFinderSeedsOnly 用 httptest 真跑）。\n- 纯函数可测：parseTXT / serviceInfo.peer / healthPeer / addrURL；错误只在「本轮全部 seed 都失败」时记 lastErr，单个 seed 挂掉不污染状态行。\n- 修掉一个真 bug：zeroconf 的 Browse 只做一次查询就返回，mainloop 在 ctx 结束时自行 close(entries)，原实现再 close 会 panic；改为消费 + 订阅通道异常关闭时重订（-race 下不再 panic）。\n- 新增 Finder.ProbeNow()（立即探活，供测试与将来「刷新节点」用）。\n\nB. internal/engine（3 文件，contract.go 未改）\n- New/Start/Stop + Controller 全部方法；var _ Controller = (*Engine)(nil)。\n- S1 本机复制→入历史+广播（暂停则不广播）；S2 由 sync.Server 入历史，apply 回调只做 Write+MarkSeen；S3 取回 Write+MarkSeen 不广播；S4 PushCurrent 强制广播；S5 暂停；S6 依赖服务端去重（不双写历史）；S7 广播失败只记日志不重试；S8 空/超限跳过。\n- 核心不变量用 poller.MarkSeen（无 suppress 字段），applyLocal 是唯一写入路径，S2/S3 共用。\n- Broadcaster 启动即 SetRoomKey（漏了会全失败）；discovery.Peer→sync.Peer 逐项转换；Start 先把 poller 备好再 serve HTTP（避免入站请求打到 nil poller），端口冲突返回可读错误。\n\nC. 集成测（integration_test.go，7 用例）\n- 两 Engine + 假 Clipboard + 独立端口 + 同 roomKey + seeds 互指（顺带验证禁多播路径）。\n- TestIntegrationNoLoopback：A 复制→B 剪贴板与历史更新（B 历史恰好 1 条，防双写）→ B 广播次数 0、A 无 apply、A 条目 RecvAt 未被刷新、等 600ms 后 A 历史条数不变。\n- 暂停/恢复、AutoApply 开关、取回不广播、重复内容不重复入历史、PushCurrent 恰好广播一次、暂停时 PushCurrent 返回 ErrPaused 均有断言。\n\n验证：go build ./... 与 go vet ./... 通过；gofmt 无差异；go test ./internal/discovery/ ./internal/engine/ -race 全绿；go test ./... -race 9 包全绿；集成测 -count=3 无抖动。\n\n需 captain 裁决的语义：暂停（S5）时远端条目仍会由 sync.Server 记入历史，engine 只阻止写剪贴板（design §5 只写「不应用远端」，Add 在 sync.Server 内、engine 无法拦截）。若期望暂停时连历史也不记，需要给 NewServer 传暂停感知的 store 包装，属跨包改动。",
+      "changedPaths": [
+        "internal/discovery/discovery.go",
+        "internal/discovery/mdns.go",
+        "internal/discovery/seeds.go",
+        "internal/discovery/discovery_test.go",
+        "internal/engine/engine.go",
+        "internal/engine/engine_test.go",
+        "internal/engine/integration_test.go"
+      ],
+      "acceptanceResults": [
+        {
+          "criterion": "internal/discovery：mDNS 公告/订阅（_clipshare._tcp，TXT room/node/name/ver）、room 过滤、按 deviceId 去重并排除自身、静态 seeds 30s /v1/health 探活、MDNS=false 只走 seeds；解析与过滤抽成纯函数",
+          "status": "passed",
+          "evidence": "discovery.go/mdns.go/seeds.go：parseTXT、serviceInfo.peer、healthPeer 为纯函数；Finder 维护 mdns/seeds 两条腿并合并去重；seeds 立即探活 + 30s ticker；mdnsTTL 120s 过期回收；单测 9 个全绿"
+        },
+        {
+          "criterion": "internal/engine：实现 t1 Controller 契约、S1–S8 逐条落地、核心不变量用 poller.MarkSeen 而非 suppress 标志位、apply 回调只写剪贴板+MarkSeen 不重复 Add、端口占用返回可读错误",
+          "status": "passed",
+          "evidence": "engine.go：var _ Controller = (*Engine)(nil)；applyRemote 仅 applyLocal(Write+MarkSeen)；onLocalChange 处理 S1/S5/S8；PushCurrent S4/S7/S8；PullEntry S3；SetPaused S5；Broadcaster 启动即 SetRoomKey；Start 端口冲突错误含换端口提示；单测 13 个全绿"
+        },
+        {
+          "criterion": "集成测（进程内两 Engine + 假 Clipboard + 独立端口 + 同 roomKey）：A 复制→B 剪贴板与历史更新→A→B→A 不回环；暂停生效；取回不广播；重复内容不重复入历史",
+          "status": "passed",
+          "evidence": "integration_test.go 7 用例全 PASS：NoLoopback 断言 B 广播 0 次、A 无 apply、A 条目 RecvAt 未刷新、B 历史仅 1 条（防双写）；Pull 不广播；重复内容不重复入历史；暂停/AutoApply 开关/PushCurrent/暂停推送 ErrPaused；-count=3 无抖动"
+        },
+        {
+          "criterion": "验证：go test ./internal/discovery/ ./internal/engine/ -race 全绿，且 go test ./... -race 全绿",
+          "status": "passed",
+          "evidence": "discovery 1.3s、engine 12.6s 全绿；go test ./... -race 9 个包全 ok"
+        },
+        {
+          "criterion": "约束：只写 internal/engine/ 与 internal/discovery/，不改 t2 的 clip/sync，不执行 git 命令",
+          "status": "passed",
+          "evidence": "改动仅 7 个文件，全在 internal/engine/ 与 internal/discovery/；未编辑 clip/sync/tray/webui/cmd；全程未执行 git"
+        }
+      ],
+      "commandsRun": [
+        {
+          "command": "go build ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "全仓编译通过，无输出"
+        },
+        {
+          "command": "go vet ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无告警"
+        },
+        {
+          "command": "gofmt -l internal/engine internal/discovery",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无输出（格式合规）"
+        },
+        {
+          "command": "go test ./internal/discovery/ ./internal/engine/ -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "ok discovery 1.313s；ok engine 12.573s（28 个 Test 全 PASS）"
+        },
+        {
+          "command": "go test ./... -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "9 个包全部 ok"
+        },
+        {
+          "command": "go test ./internal/engine/ -race -count=3 -run TestIntegration",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "集成测连跑 3 轮全绿（24.8s）"
+        }
+      ]
+    },
+    {
+      "id": "t5",
+      "profileSeedId": "t5",
+      "subject": "组装 cmd/clipshare + Makefile + README",
+      "description": "必读：design §6（配置与 flag）、§9（--no-tray 降级）、§10、§12。依赖 t4（engine 实现）。\n\n**范围变更（captain 调整）**：Makefile 与 README 初稿已拆给 t9（由 core-net 并行推进）。本任务只负责 `cmd/clipshare/main.go` 的组装，加一道 README 终稿复核。\n\n## A. cmd/clipshare/main.go\n\n- flag：`--room` `--port` `--name` `--seed`(可多次) `--no-tray` `--no-persist` `--mdns=false` `--config-dir` `--version`；**flag 优先级高于配置文件**。\n- `version` 必须是**可被 ldflags 覆盖的包级变量**：`var version = \"dev\"`（Makefile 用 `-X main.version=...` 注入），`--version` 打印它。\n- 启动顺序：加载配置（`config.Dir`/`Load`，损坏只告警不退出）→ 建 history（`Load` 失败只告警）→ `clip.New` + `clip.CheckAvailable`（失败打印安装命令后退出，**不要静默空转**）→ `engine.New`/`Start` → 打印 Web UI 地址与**房间码前 6 位** → 托盘 `tray.Run`（`--no-tray` 则阻塞等 SIGINT/SIGTERM）。\n- 首启日志必须明确提示「房间码 <roomKey>，其他机器填同一个才能互通」——这是多机连通失败的头号原因。\n- 优雅退出：收到信号或托盘退出后调 `engine.Stop()`，确保历史落盘。\n- 配置目录不存在时创建（0700）。\n\n## B. README 终稿复核（t9 已写初稿）\n\n- 逐条实跑 README 里的每条命令与每个 flag，不符就修正。\n- 重点校验：`--help` 列出的 flag 与 README 配置项表是否一致；`--version` 输出是否与 Makefile 注入的 VERSION 对得上；`--no-tray` 启动后打印的 Web UI 地址是否真能打开。\n- 把【验过的关键输出】补进 README 的快速开始。\n\n验证：`make build-linux build-windows` 产出两平台二进制（Makefile 来自 t9）；`./bin/clipshare --version` 正常；`./bin/clipshare --no-tray --port 47999` 能起来并打印 Web UI 地址（不需要真剪贴板交互）；`curl -s http://127.0.0.1:47999/v1/health` 返回合法 JSON；进程收到 SIGTERM 后干净退出（历史已落盘）。\n约束：只写 `cmd/` 与 `README.md`；不改 `internal/`（发现问题报 captain）；不执行 git 命令。",
+      "status": "completed",
+      "assignee": "core-net",
+      "dependencies": [
+        "t4"
+      ],
+      "attempt": 1,
+      "createdAt": 1794394015684,
+      "updatedAt": 1794395740215,
+      "attemptId": "00851e12-5ef9-4efc-b8d7-a1f7240cd334",
+      "reassigning": false,
+      "output": "t5 完成：cmd/clipshare/main.go 组装 + README 终稿复核。\n\nA. cmd/clipshare/main.go（约 380 行，只做组装，不改 internal/）\n- 9 个 flag：--room/--port/--name/--seed(可重复，multiFlag)/--no-tray/--no-persist/--mdns(默认 true，--mdns=false 关闭；用 flag.Visit 区分「未指定」与「显式指定」)/--config-dir/--version；flag 优先级高于配置且只影响本次运行（实测不写回 config.json）。\n- `var version = \"dev\"` 供 `-ldflags -X main.version` 注入；--version 打印它。engine.Version 已被 t10 改为 var，main 在 Start 前 `engine.Version = version`，实测 /v1/health 的 version 与 --version 均为 0.1.0。\n- 启动顺序按要求：config.Dir/Load（损坏只告警）→ history.Load（失败只告警）→ clip.CheckAvailable + clip.New（失败打印 apt 安装命令、退出码 1，不静默空转）→ engine.New/Start（端口冲突由它报可读错误，main 不抢同步端口）→ 打印 Web UI 地址 + 房间码前 6 位 + 「其他机器填同一个 roomKey 才能互通」→ 首启额外提示配置文件路径。\n- 托盘在主 goroutine（systray 需要原生 UI 线程），panic 时 recover 并降级为无托盘继续服务；信号退出由旁路线程 eng.Stop()+os.Exit(0) 收尾；--no-tray 主 goroutine 阻塞等 SIGINT/SIGTERM，返回后 defer eng.Stop() 让历史落盘。\n- 本地历史页：`mux.Handle(\"/\", webui.Handler(ctrl))`，只 listen 127.0.0.1:<port+1>（engine 未暴露 UI 挂载点，必须另开 loopback listener；同步端口完全交给 engine），port+1 被占用时退回系统分配端口，实际地址打日志。\n- 新增 cmd/clipshare/main_test.go（10 个测试）：默认值、全 flag、--version/--help 路径、未知 flag/多余参数退出码、loadConfig 覆盖与不写回、非法覆盖值报错。\n\nB. README 终稿（311 行）\n- 全部「待 t5 复跑」占位替换为真实 transcript：make all（10 包全绿 + 两条构建命令 + ls -l bin + file 输出）、--version、--help 全文、--no-tray 启动日志、/v1/health JSON、历史页 HTTP 200、真实剪贴板→历史→SIGTERM→history.json 落盘、端口冲突原文、缺剪贴板命令原文、flag 不写回实测。\n- §6 新增第 5 条暂停边界（captain 给的文案，逐字）：暂停是「外向」开关，不广播、不写剪贴板，但远端条目仍进历史。\n- §8 flag 表补齐为 9 行并与 --help 逐条对齐（新增 --mdns、--config-dir），写明「只影响本次运行、不写回配置文件」。\n- 修正历史页端口说明：默认 47100 → http://127.0.0.1:47101/ui（已实测）。\n- 末尾保留「仍需人工验收」：托盘菜单点击、两机同步、Windows 实机、mdns:false+seeds 两机。\n\n需 captain 裁决的一个跨包问题（有据）：internal/engine/engine.go:108 的 engine.New 用 config.Dir() 决定 cfgDir，完全不看 --config-dir，所以带 --config-dir 运行时，托盘里的开关（自动应用/mDNS）改动会写回默认配置目录（可能凭空造出第二份 config.json）。我在 README §8 以「已知限制」如实写了；彻底修需要 engine 接受配置目录（一行 option 或把 cfgDir 从已加载的路径传入），属 internal/ 改动，等你定。\n\n另外两处说明：1) main 里确实有一次 net.Listen，但只绑 127.0.0.1:<port+1> 给 Web UI（engine 没有暴露 UI handler 挂载点），同步端口一律交给 engine.Start，端口冲突实测仍由 engine 报错；若你希望改成「UI 也由 engine 托管」需要改 internal/。2) 本机 DISPLAY=:1 + DBus 可用，托盘模式能启动且 SIGTERM exit=0，但图标是否真出现在面板上仍需人眼验收（已列入 README 人工验收项）。",
+      "changedPaths": [
+        "cmd/clipshare/main.go",
+        "cmd/clipshare/main_test.go",
+        "README.md"
+      ],
+      "acceptanceResults": [
+        {
+          "criterion": "make build-linux build-windows 产出两平台二进制",
+          "status": "passed",
+          "evidence": "make all 中部输出两条 CGO_ENABLED=0 命令均成功；ls -l bin/：clipshare 9801912 字节、clipshare.exe 7737856 字节；file 识别为 ELF 64-bit statically linked / PE32+ x86-64 MS Windows"
+        },
+        {
+          "criterion": "./bin/clipshare --version 正常",
+          "status": "passed",
+          "evidence": "输出 `clipshare 0.1.0`，退出码 0（版本来自 main.version，Makefile 注入 0.1.0）"
+        },
+        {
+          "criterion": "./bin/clipshare --no-tray --port 47999 能起来并打印 Web UI 地址",
+          "status": "passed",
+          "evidence": "真实启动日志：`本地历史页: http://127.0.0.1:48000/ui`；curl 该地址返回 `HTTP 200, text/html; charset=utf-8, 9897 bytes`；默认端口下实测历史页在 47101（port+1）"
+        },
+        {
+          "criterion": "curl -s http://127.0.0.1:47999/v1/health 返回合法 JSON，且 version 与 --version 一致",
+          "status": "passed",
+          "evidence": "`{nodeId:914322a9fb0d7e9055d818033ff0f06c, name:haitang, version:0.1.0, roomHash:978a2c6040ce}`；engine.Version 已为 var（t10），main 在 Start 前写入 engine.Version = version，两处版本均为 0.1.0"
+        },
+        {
+          "criterion": "进程收到 SIGTERM 后干净退出（历史已落盘）",
+          "status": "passed",
+          "evidence": "kill -TERM 后 exit=0，日志末两行「收到信号 terminated，开始退出…」「[engine] 已停止」；history.json 内有真实剪贴板条目（xsel 写入 t5-accept-1794395611 → 轮询入库 → 落盘）"
+        },
+        {
+          "criterion": "9 个 flag 全部实现，flag 优先级高于配置文件且不写回配置文件",
+          "status": "passed",
+          "evidence": "--help 列出 -config-dir/-mdns/-name/-no-persist/-no-tray/-port/-room/-seed/-version；实测 --room flagroom --port 47996 --mdns=false 启动后 /v1/health 的 roomHash=c16ecc5336ee（= sha256(flagroom) 前12位），而 config.json 仍为随机 roomKey(hshujd)、port 47100、mdns true；单测 TestLoadConfigOverridesFlags 同断言"
+        },
+        {
+          "criterion": "clip 自检失败时打印安装命令后退出，不静默空转",
+          "status": "passed",
+          "evidence": "PATH=/nonexistent 实跑：`clipshare: 缺少剪贴板命令 xclip/xsel：请安装其一，例如 sudo apt install xclip（或 sudo apt install xsel）`，退出码 1"
+        },
+        {
+          "criterion": "tray.Run 跑在主 goroutine；Web UI 只绑 127.0.0.1；main 不抢同步端口（冲突由 engine.Start 报错）",
+          "status": "passed",
+          "evidence": "代码：serveUntilExit 主 goroutine 调 runTray（带 recover 降级），信号退出由旁路线程 Stop+os.Exit；startWebUI 仅 listen 127.0.0.1:<port+1>，同步端口全部交给 engine.Start；实测第二实例报 `clipshare: 端口 47999 无法监听（可能已被占用）… address already in use` 退出码 1；托盘模式（不带 --no-tray）在本机能启动且 SIGTERM exit=0"
+        },
+        {
+          "criterion": "README 终稿：所有占位替换为真实输出；--help 与 §8 flag 表一致；§6 新增暂停边界；无编造输出",
+          "status": "passed",
+          "evidence": "README 311 行；附录含 make all / ls -l bin / file / --version / --help 全文 / 运行期 health+UI+entries+SIGTERM+history.json 的真实 transcript；§8 表 9 行与 --help 逐条对应；§6 第 5 条为 captain 给的暂停边界原文；未验证项仅剩托盘菜单点击、两机同步、Windows 实机、mdns:false+seeds 两机，已列在「仍需人工验收」"
+        },
+        {
+          "criterion": "配置目录不存在时创建（0700）",
+          "status": "passed",
+          "evidence": "/tmp/clipshare-demo 首次运行自动创建，ls -la 显示 drwx------，内含 config.json（0600）与 history.json"
+        }
+      ],
+      "commandsRun": [
+        {
+          "command": "make all",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "go vet 通过；go test ./... -race -count=1 十个包全 ok（cmd/clipshare 1.014s、engine 12.980s …）；两条 CGO_ENABLED=0 构建成功产出 bin/clipshare 与 bin/clipshare.exe"
+        },
+        {
+          "command": "go test ./cmd/clipshare/ -race -count=1 -v",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "10 个测试全 PASS：默认值/全 flag 解析/--version 路径/--help 含 9 flag/未知 flag 退出码 2/多余参数/loadConfig 覆盖与不写回/非法覆盖值报错"
+        },
+        {
+          "command": "./bin/clipshare --version",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "clipshare 0.1.0，exit 0"
+        },
+        {
+          "command": "./bin/clipshare --help",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "输出完整用法与 9 个 flag（config-dir/mdns/name/no-persist/no-tray/port/room/seed/version），exit 0"
+        },
+        {
+          "command": "./bin/clipshare --no-tray --port 47999 --config-dir /tmp/clipshare-demo",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "启动成功：打印 节点/端口/房间、配置文件、本地历史页 http://127.0.0.1:48000/ui、房间码 6adeyu + 互通提示、首次启动提示；SIGTERM 后 exit=0 且日志有「收到信号 terminated，开始退出…」「[engine] 已停止」"
+        },
+        {
+          "command": "curl -s http://127.0.0.1:47999/v1/health",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "{\"nodeId\":\"914322a9fb0d7e9055d818033ff0f06c\",\"name\":\"haitang\",\"version\":\"0.1.0\",\"roomHash\":\"978a2c6040ce\"}；version 与 --version 一致"
+        },
+        {
+          "command": "curl -s -o /dev/null -w 'HTTP %{http_code}, %{content_type}, %{size_download} bytes\\n' http://127.0.0.1:48000/ui",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "HTTP 200, text/html; charset=utf-8, 9897 bytes；默认端口时 47101 同样 200"
+        },
+        {
+          "command": "printf 't5-accept-%s' \"$(date +%s)\" | xsel --clipboard --input && sleep 1.2 && curl -s http://127.0.0.1:48000/ui/api/entries",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "真实剪贴板 → 历史：[{id:c7bd2e269e14eee1, content:t5-accept-1794395611, recvAt:2026-11-11T19:13:31.198421456+08:00}]；SIGTERM 后 history.json 内容相同（落盘确认）"
+        },
+        {
+          "command": "第二个实例同端口启动（验证端口冲突由 engine 报错）",
+          "status": "passed",
+          "exitCode": 1,
+          "evidence": "clipshare: 端口 47999 无法监听（可能已被占用），用 --port 或配置里的 port 换一个: listen tcp :47999: bind: address already in use；exit 1"
+        },
+        {
+          "command": "env -u WAYLAND_DISPLAY PATH=/nonexistent ./bin/clipshare --no-tray --port 47995 --config-dir /tmp/clipshare-noclip",
+          "status": "passed",
+          "exitCode": 1,
+          "evidence": "clipshare: 缺少剪贴板命令 xclip/xsel：请安装其一，例如 sudo apt install xclip（或 sudo apt install xsel）；exit 1"
+        },
+        {
+          "command": "./bin/clipshare --port 47998 --config-dir /tmp/clipshare-t5tray（托盘模式）",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "启动成功、/v1/health 正常、SIGTERM exit=0；未打印托盘降级告警（systray 初始化成功），但菜单点击需人眼验收"
+        },
+        {
+          "command": "./bin/clipshare --no-tray --mdns=false --room flagroom --port 47996 --config-dir /tmp/clipshare-flags",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "health roomHash=c16ecc5336ee（sha256(\"flagroom\") 前12位）证明 --room 生效；config.json 仍为 roomKey hshujd / port 47100 / mdns true，证明 flag 未写回"
+        }
+      ]
+    },
+    {
+      "id": "t6",
+      "profileSeedId": "t6",
+      "subject": "全量验证：测试、vet、双平台构建、双进程实测",
+      "description": "你是独立验证者，不改实现（发现问题报告 captain 并给出复现命令，不要自己顺手改别人的代码）。\n\n逐项执行并记录真实输出：\n1. `gofmt -l .`（应为空）、`go vet ./...`\n2. `go test ./... -race -count=1`\n3. `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./...`\n4. `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...`\n5. 双进程实测：同一台机器起两个实例，端口 47901/47902、各自独立 `--config-dir`、**同一 roomKey**、`--seed 127.0.0.1:47902` 与 `127.0.0.1:47901`，`--no-tray`，用 `curl` 向 47901 的 `/v1/items` 推一条条目（带正确 Bearer 与 X-Room），确认 47902 的历史接口里出现该条目、且在 47902 上用相同条目重推不会回环到 47901。\n6. `curl` 校验鉴权：错误 Bearer 得 401、错误 X-Room 得 403、超限内容得 400。\n7. 检查 spec 中「非目标」是否被越界实现（例如私自加了 TLS、加了图片支持）。\n\n产出：一份验证报告（markdown，写到 `docs/verification-2026-11-11.md`），每条给命令 + 关键输出 + 通过/失败。任何失败都必须给出最小复现步骤。",
+      "status": "failed",
+      "assignee": "verifier",
+      "dependencies": [
+        "t2",
+        "t3",
+        "t4",
+        "t5"
+      ],
+      "attempt": 1,
+      "createdAt": 1794394015684,
+      "updatedAt": 1794396367482,
+      "attemptId": "24a03a8d-8031-4471-8fe9-028a765e2a49",
+      "reassigning": false,
+      "output": "全量验证已执行完毕（HEAD=312e56d），报告落盘 docs/verification-2026-11-11.md（399 行，含每条命令+关键输出+最小复现）。\n\n通过：gofmt/vet（含 GOOS=windows）、go test ./... -race（10 包全绿）、linux/windows 交叉构建（并产出真实 ELF/PE32+，--version=0.1.0）、鉴权 401/403/400/405/200（含 262144 边界 202）、非目标未越界（无 TLS/图片/文件/中继/多房间/加密/自启，仅托盘图标用 image/png）、双进程互不转发（A 收到入站条目后 B 历史为空；B 收到 E3 时 A 历史为空，且 B 已知 A、广播计数=1）。\n\n失败/阻塞：\n- F1（blocker）：.gitignore 第 3 行 `clipshare` 把 `cmd/clipshare/` 整个目录也忽略了，`git ls-files cmd`=0，HEAD 无 cmd/；clone 后 `go build ./cmd/clipshare` 报 \"directory not found\"。0d74bac 的 \"M4: cmd/clipshare 组装\" 实际只提交了 README。修复：`clipshare`→`/clipshare`（含 .exe）后 git add。在此之前不应做最终提交/发版。\n- 任务第 5 项字面要求「47902 历史出现推给 47901 的条目」与 spec §5 S2 冲突、不可达（入站条目不转发；转了就会回环风暴）。默认 autoApply=true 时 B 历史确实出现该内容，但 origin=B，是同机两进程共享 X 剪贴板造成的本地重识别，不是转发。已在报告中给出符合 spec 的等价更强验证。\n- F3（low，待裁决）：重复入站条目会刷新既有条目 recvAt 并置顶（19:23:03.632→19:23:04.892），与 spec §5 S6「不写历史」字面冲突（history 包文档称为有意行为）。\n- F4（low）：/v1/health 缺 spec 示例中的 clients 字段。\n- F5（low）：go.mod 未 tidy（3 个直接依赖标 // indirect，go.sum 缺条目）。\n- F2（medium，操作注意）：UI 端口=同步端口+1 与指定相邻端口 47901/47902 撞车——先启动低端口实例会让 47902 实例 exit 1；反向顺序则 UI 回退随机端口。spec §9 已写明该规则，属验收脚本/README 需注明。\n- F6：t5 报的 --config-dir 写回问题已由 312e56d 修复，验证期间 ~/.config/clipshare 始终未生成，无需再处理。\n\n未覆盖（需人工）：Windows 真机、托盘菜单点击、mDNS 开启路径、真两机同步、浏览器交互。",
+      "findings": [
+        {
+          "id": "F1",
+          "severity": "blocker",
+          "problem": "`.gitignore` 的 `clipshare` 规则匹配任意层级同名目录，导致 cmd/clipshare/ 整个被忽略；git ls-files cmd 为空、HEAD 无 cmd/，clone 后无法构建入口（0d74bac 名为 M4 组装但只提交了 README）。git status 仍显示干净，极易漏过。",
+          "requiredFix": "把 .gitignore 的 `clipshare`/`clipshare.exe` 改为锚定的 `/clipshare`、`/clipshare.exe`，然后 git add cmd/clipshare/main.go cmd/clipshare/main_test.go，并用 git ls-files cmd 确认非空；在此之前不要做最终提交/发版。",
+          "file": ".gitignore",
+          "line": 3
+        },
+        {
+          "id": "F2",
+          "severity": "medium",
+          "problem": "UI 端口 = 同步端口 + 1（uiAddrOffset）在「同机两进程 + 相邻端口」验收场景会撞车：先启动低端口实例会把 127.0.0.1:(port+1) 占住，导致高端口实例 bind 失败 exit 1；反向顺序则低端口实例 UI 回退随机端口。任务指定的 47901/47902 正属此场景（本次实测 D 实例 exit=1）。spec §9 已写明该端口规则与回退，故非实现违规，但验收脚本/README 需写明启动顺序或改用非相邻端口。",
+          "requiredFix": "在 README 的双进程验收步骤注明「先启动高端口实例，或使用非相邻端口（如 47901/47911）」；如需彻底消除，让 UI 端口可配置或由 engine 暴露 UI 挂载点。",
+          "file": "cmd/clipshare/main.go",
+          "line": 47
+        },
+        {
+          "id": "F3",
+          "severity": "low",
+          "problem": "重复内容入站时 Add 会刷新既有条目的 RecvAt 并置顶（返回 false）：实测 B 历史条数不变但 recvAt 19:23:03.632→19:23:04.892。spec §5 S6 写「202 并丢弃，不写历史」，与此字面冲突（history 包注释称有意为之）。不产生新条目、不广播、不回环，功能影响小。",
+          "requiredFix": "裁决口径：要么在 spec §5 S6/§4 写明「重复只刷新本地 RecvAt 并置顶」，要么让 sync.Server 在入站重复时不刷新时间戳（保留原 RecvAt）。",
+          "file": "internal/history/history.go",
+          "line": 126
+        },
+        {
+          "id": "F4",
+          "severity": "low",
+          "problem": "GET /v1/health 响应只有 nodeId/name/version/roomHash，缺 spec §6 示例中的 clients 字段，文档与实现漂移（发现逻辑不依赖它）。",
+          "requiredFix": "补 clients（当前 peers 数）字段，或从 spec §6 示例中删除该字段。",
+          "file": "internal/sync/server.go",
+          "line": 156
+        },
+        {
+          "id": "F5",
+          "severity": "low",
+          "problem": "go.mod 未 tidy：atotto/clipboard、energye/systray、grandcat/zeroconf 三个直接依赖标为 // indirect；go.sum 缺 github.com/pkg/errors、golang.org/x/sync 等条目（go mod tidy -diff 非空）。构建不受影响，属交付卫生。",
+          "requiredFix": "收尾前执行 go mod tidy 并提交 go.mod/go.sum。",
+          "file": "go.mod",
+          "line": 6
+        },
+        {
+          "id": "F-5.1",
+          "severity": "low",
+          "problem": "任务第 5 项字面要求「向 47901 推条目后 47902 历史出现该条目」与 spec §5 S2（入站不转发）及回环不变量冲突，不可达；默认 autoApply=true 下观察到的现象是同机两进程共享 X 剪贴板导致的本地重识别（origin=B），不能当作转发证据。",
+          "requiredFix": "把该验收项改为「A 复制（S1）→ B 历史出现且 B 剪贴板更新 → B 不反播」，并在真两机执行；同机模拟时需说明共享剪贴板限制。",
+          "file": "docs/verification-2026-11-11.md",
+          "line": 1
+        }
+      ],
+      "changedPaths": [
+        "docs/verification-2026-11-11.md"
+      ],
+      "acceptanceResults": [
+        {
+          "criterion": "1. gofmt -l . 为空、go vet ./... 通过（附加 GOOS=windows vet）",
+          "status": "passed",
+          "evidence": "gofmt 无输出 exit=0；go vet 与 GOOS=windows go vet 均无输出 exit=0"
+        },
+        {
+          "criterion": "2. go test ./... -race -count=1 全绿",
+          "status": "passed",
+          "evidence": "10 包全部 ok（cmd/clipshare、clip、config、discovery、engine 12.97s、history、model、sync、tray、webui），PIPESTATUS=0"
+        },
+        {
+          "criterion": "3. CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./... 通过",
+          "status": "passed",
+          "evidence": "exit=0；另产出 ELF 64-bit statically linked stripped，--version 输出 0.1.0"
+        },
+        {
+          "criterion": "4. CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./... 通过",
+          "status": "passed",
+          "evidence": "exit=0；另产出 PE32+ console x86-64 二进制"
+        },
+        {
+          "criterion": "5. 双进程实测：47902 历史出现推给 47901 的条目，且重推不回环",
+          "status": "failed",
+          "evidence": "不回环成立：向 47902 推不同内容 E3（此时 B 广播计数=1，已知 A）后 A 历史仍为空；向 47901 推 E4 后 B 历史仍只有 E3；相同条目重推两次 202/202、A 条数与 recvAt 不变。但字面要求不成立：入站条目按 spec §5 S2 不转发，B 历史为空或只出现 origin=B 的本地重识别（同机共享 X 剪贴板），不是 P2P 传播。属 spec 与任务措辞冲突，见报告 F-5.1"
+        },
+        {
+          "criterion": "6. 鉴权校验：错误 Bearer 401、错误 X-Room 403、超限内容 400",
+          "status": "passed",
+          "evidence": "401{\"error\":\"roomKey 不匹配\"}、403、400 空内容、400 262145>262144、262144 边界 202、405 非 POST、health 200 免鉴权"
+        },
+        {
+          "criterion": "7. 非目标未被越界实现",
+          "status": "passed",
+          "evidence": "grep：无 crypto/tls|x509、无 relay/nat/upnp/multipart、无 encrypt/aes、无 autostart/systemd、无多房间；image/png 仅用于托盘图标；剪贴板接口仅 string"
+        },
+        {
+          "criterion": "8. 仓库交付完整性：clone 后能构建 cmd/clipshare",
+          "status": "failed",
+          "evidence": "git ls-files cmd=0；git check-ignore 显示 .gitignore:3:clipshare 命中 cmd/clipshare/main.go；clone 后 ls cmd 不存在、go build ./cmd/clipshare 报 directory not found"
+        }
+      ],
+      "commandsRun": [
+        {
+          "command": "gofmt -l .",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无输出"
+        },
+        {
+          "command": "go vet ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无输出"
+        },
+        {
+          "command": "CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go vet ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无输出"
+        },
+        {
+          "command": "go test ./... -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "10 个包全部 ok"
+        },
+        {
+          "command": "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "exit 0"
+        },
+        {
+          "command": "CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "exit 0"
+        },
+        {
+          "command": "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags '-s -w -X main.version=0.1.0' -o /tmp/cs-verify/clipshare-linux-2 ./cmd/clipshare && file … && … --version",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "ELF 64-bit statically linked stripped；clipshare 0.1.0"
+        },
+        {
+          "command": "CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags '-s -w -X main.version=0.1.0' -o /tmp/cs-verify/clipshare-windows-2.exe ./cmd/clipshare && file …",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "PE32+ executable (console) x86-64, for MS Windows"
+        },
+        {
+          "command": "两个实例（47901/47902、独立 --config-dir、同 roomKey、互 seed、--no-tray --mdns=false）启动 + curl POST /v1/items + /ui/api/entries 校验",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "推送 202；A 收到 E1 后 B 历史为空；B 收到 E3（A 已知 B）后 A 历史为空；重推 202/202 且 A 不变；SIGTERM 后 history.json 落盘正确"
+        },
+        {
+          "command": "curl 鉴权矩阵（错误/缺失 Bearer、错误 X-Room、空内容、超限、=上限、GET /v1/items、/v1/health）",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "401/401/403/400/400/202/405/200"
+        },
+        {
+          "command": "非目标检索（crypto/tls、image、multipart、relay/nat、encrypt、autostart、multi-room）",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "除托盘图标 image/png 外无命中"
+        },
+        {
+          "command": "git ls-files cmd",
+          "status": "failed",
+          "exitCode": 0,
+          "evidence": "输出为空（0 个文件），但存在 cmd/clipshare/main.go 与 main_test.go"
+        },
+        {
+          "command": "git clone -q . /tmp/repo-check && ls /tmp/repo-check/cmd && cd /tmp/repo-check && go build ./cmd/clipshare",
+          "status": "failed",
+          "exitCode": 1,
+          "evidence": "ls: 无法访问 '/tmp/repo-check/cmd': 没有那个文件或目录；go build: stat …/cmd/clipshare: directory not found"
+        },
+        {
+          "command": "go mod tidy -diff",
+          "status": "failed",
+          "exitCode": 0,
+          "evidence": "非空 diff：atotto/clipboard、energye/systray、grandcat/zeroconf 应为直接依赖；go.sum 缺 pkg/errors、x/sync 条目"
+        }
+      ]
+    },
+    {
+      "id": "t7",
+      "profileSeedId": "t7",
+      "subject": "对照 spec 的独立代码 review",
+      "description": "对照 `docs/superpowers/specs/2026-11-11-lan-clipboard-design.md` 逐节核对实现，重点：\n\n1. **S1–S8 每条语义**是否真的实现（尤其 S2 的 MarkSeen 抑制、S6 去重、S7 不重试、S8 超限）。\n2. **回环抑制**：找一个能证明「A→B→A 不回环」的测试，若测试缺失或不能证明，判为缺陷。\n3. **边界**：Linux 缺 xclip 是否真的报错退出而不是空转；端口占用是否有可读错误；历史文件损坏是否只告警不崩。\n4. **契约**：tray/webui 是否只依赖 `engine.Controller`（不能用具体实现，否则无法单测）。\n5. **安全**：roomKey 是否未经网络发出（只能出现 `X-Room` hash 或 Bearer 头）；配置与历史文件权限是否 0600；Web UI 是否只绑 127.0.0.1。\n6. **可维护性**：单文件是否过大（>500 行需说明理由）、是否有明显重复、注释是否解释了「为什么」。\n\n## 追加：两项后期修复的专项复核（必须单独给结论）\n\n7. **t10 版本注入**（提交 5f101d4）：`engine.Version` 已从 const 改为 var。核对：`--version` 与 `GET /v1/health` 的 `version` 是否真的一致；`main` 是否在 `Start` **之前**赋值；是否存在第二处硬编码 `\"0.1.0\"` 会让某条路径静默上报错误版本（`grep -rn '0\\.1\\.0' internal/ cmd/` 自查）。\n8. **t11 `--config-dir` 修复**（本任务依赖它）：核对 `config.Config` 是否新增了不落盘的 `Dir` 字段（`json:\"-\"`），`Load` 的**三条返回路径**（正常/缺失新建/损坏重建）是否都填了 `Dir`，`engine` 是否优先用 `cfg.Dir` 并在为空时回退。**并自己实跑一次取证**：带一个临时 `--config-dir` 启动实例、用 curl 或托盘等价路径触发一次 `SetAutoApply` 写盘，断言写进了**那个临时目录**而没有在默认目录产生 `config.json`。若测试已覆盖，指出测试函数名与断言行。\n9. **两处裁决是否与文档一致**（captain 已改 design §5 与 §9）：\n   - 暂停的边界：实现应为「不广播、不写剪贴板，但远端仍入历史」，且 README §6 与 design §5 文案一致；\n   - UI 端口规则：应为「同步端口+1，占用时回退并打印实际地址」，且 main 持有 UI listener、engine 持有同步 listener。\n\n产出：`docs/review-2026-11-11.md`，按严重度分级（blocker / high / medium / low），每条含文件:行、问题、建议改法。不要改代码。",
+      "status": "pending",
+      "assignee": "verifier",
+      "dependencies": [
+        "t6",
+        "t11"
+      ],
+      "attempt": 0,
+      "createdAt": 1794394015684,
+      "updatedAt": 1794395830612
+    },
+    {
+      "id": "t8",
+      "subject": "加固 sync.Server 空 roomKey 的鉴权 fail-open",
+      "description": "captain 在 review t2 时发现的 fail-open 缺陷，需要一个加固补丁（改动很小，但属于安全边界）。\n\n## 缺陷\n\n`internal/sync/server.go` 的 `handleItems` 第一行鉴权：\n\n```go\nif !constantTimeEqual(bearerToken(r), s.cfg.RoomKey) { ... 401 }\n```\n\n`constantTimeEqual` 底层是 `subtle.ConstantTimeCompare`，**空串与空串相等**。因此当 `NewServer` 收到 `RoomKey == \"\"` 时，任何**不带 `Authorization` 头**的请求（`bearerToken` 返回空串）都会通过鉴权，合法条目会被接收进历史并写入剪贴板。\n\n`config.Validate` 确实要求 roomKey 非空，但那只覆盖「从配置文件加载」这条路径；`NewServer` 是公开构造函数，engine 或测试可以直接构造。鉴权 fail-open 属于不该存在的可能性。\n\n## 要求（不要改构造签名）\n\n**保持 `NewServer(cfg, store, apply) *Server` 签名不变**（t4 的 engine 正在按此编码，改签名会让它返工）。改为 fail-closed：\n\n1. `handleItems` 在鉴权**之前**判断 `s.cfg.RoomKey == \"\"` → 返回 500 且错误信息明确写「服务端未配置 roomKey，拒绝接收」（不要用 401，401 会让人误以为是客户端密钥错）。\n2. `/v1/health` 不受影响（本来就免鉴权）。\n3. 在 `Server` 或包文档里写清：空 roomKey 是配置错误，服务端只能拒绝服务，不能放行。\n4. 加单测：`NewServer(ServerConfig{RoomKey: \"\"}, store, apply)` + 不带 Authorization 的 POST → 断言 500，且 `store` 里没有新增条目、`apply` 未被调用（用计数器）。同时保留一条「roomKey 正常 + 空 Bearer → 401」的既有断言，防止改坏。\n\n如果你认为还有别的 fail-open 点（例如 `X-Room` 为空与 `cfg.RoomHash` 都为空时会不会放行——`RoomHash` 为空时 `NewServer` 会从 RoomKey 推导，但 RoomKey 也空时两者都空），一并检查并加测试。\n\n## 验证\n\n- `go test ./internal/sync/ -race -count=1` 全绿\n- `go vet ./...` 通过\n- 新增测试在修复前必须能复现失败（先改测试跑一次看到红，再改实现看到绿），把这个过程写进完成报告\n\n约束：只改 `internal/sync/`；不执行 git 命令（captain 统一提交）；不要顺手改别的包。",
+      "status": "completed",
+      "assignee": "core-net",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1794394516359,
+      "updatedAt": 1794394656085,
+      "kind": "work",
+      "attemptId": "c7a7a462-f2da-4c5e-a5af-9d0d2bdd3caf",
+      "reassigning": false,
+      "output": "t8 完成：sync.Server 空 roomKey 鉴权 fail-open 已改为 fail-closed。\n\n修复（internal/sync/server.go）\n- handleItems 在鉴权之前新增守卫：s.cfg.RoomKey == \"\" → 500 + 「服务端未配置 roomKey，拒绝接收（配置错误：请检查 config.json 的 roomKey 并重启）」。回 500 而非 401，避免被误判为客户端密钥错。\n- 未改 NewServer(cfg, store, apply) 签名；engine（t4）已按此编码，全模块编译与测试通过。\n- 文档化安全边界：Server 类型注释新增「空 RoomKey 是配置错误 → /v1/items 一律 fail-closed，/v1/health 不受影响」；NewServer 注释说明不 panic 但全 500；constantTimeEqual 注释改为「调用方必须先排除空期望值，不能靠它兜底」。\n- 其它 fail-open 检查：NewServer 恒从 RoomKey 推导 RoomHash（model.RoomHash 恒返回非空 12 位 hex），故「X-Room 与 cfg.RoomHash 同为空则放行」不可达；auth 入口仅 handleItems 一处。已加断言钉住 roomHash 长度 12。\n\nTDD 过程\n- 先加 3 个测试（4+1 子用例）并运行：全红。关键证据：空 RoomKey + 不带 Authorization + X-Room=model.RoomHash(\"\")（该值可由公开的 /v1/health 获得）→ **202**，即未鉴权请求被真实接收；另两个子用例分别 403 / 401（错误码错但没放行）。\n- 再改实现，同一命令全绿；4 子用例均 500 且 store 无新增、apply 零调用。\n\n验证：go test ./internal/sync/ -race（含 -count=3）全绿；go vet ./... 通过；gofmt 干净；go test ./... -race 全模块全绿（engine 一次瞬时红是队友保存中途态，与本改动无关，现亦绿）。\n\n仅改 internal/sync/server.go 与 internal/sync/server_test.go；未执行 git 命令。",
+      "changedPaths": [
+        "internal/sync/server.go",
+        "internal/sync/server_test.go"
+      ],
+      "acceptanceResults": [
+        {
+          "criterion": "handleItems 在鉴权之前判断 RoomKey == \"\" → 500，错误信息写明「服务端未配置 roomKey，拒绝接收」；NewServer 签名不变",
+          "status": "passed",
+          "evidence": "server.go:90-93 新增前置守卫，返回 http.StatusInternalServerError 与「服务端未配置 roomKey，拒绝接收（配置错误：请检查 config.json 的 roomKey 并重启）」；NewServer 仍为 NewServer(cfg, store, apply) *Server，engine 已按此调用且全模块编译通过"
+        },
+        {
+          "criterion": "/v1/health 不受影响（本来就免鉴权）",
+          "status": "passed",
+          "evidence": "TestHealthWithoutRoomKeyStillWorks：空 RoomKey 的 Server GET /v1/health → 200，nodeId/roomHash 正常"
+        },
+        {
+          "criterion": "在 Server 或包文档里写清空 roomKey 是配置错误、只能拒绝服务不能放行",
+          "status": "passed",
+          "evidence": "server.go Server 类型注释新增「安全边界」段（空 RoomKey → /v1/items 一律 fail-closed，health 不受影响）；NewServer 注释说明不会 panic 但 /v1/items 全 500；handleItems 内注释说明 fail-open 成因与为何回 500 而非 401；constantTimeEqual 注释改为「调用方必须先排除空期望值，不能靠此函数兜底」"
+        },
+        {
+          "criterion": "单测：空 roomKey + 不带 Authorization → 500，且 store 无新增、apply 未调用；同时保留「正常 roomKey + 空 Bearer → 401」",
+          "status": "passed",
+          "evidence": "TestItemsEmptyRoomKeyFailsClosed 含 4 子用例（无 Authorization 无 X-Room / 无 Authorization+派生 X-Room / Bearer 空 token+派生 X-Room / Bearer 任意值+派生 X-Room）均断言 500 + sink.count()==0 + store.Count()==0；TestItemsNormalKeyRejectsEmptyBearer 断言正常配置下空 Bearer 仍为 401 且无副作用；原有 TestItemsUnauthorized 的「Bearer 后为空」等 5 子用例保持绿"
+        },
+        {
+          "criterion": "检查其它 fail-open 点（X-Room 与 cfg.RoomHash 同为空时是否放行）",
+          "status": "passed",
+          "evidence": "NewServer 在 RoomHash 为空时总会用 model.RoomHash(RoomKey) 推导，而 RoomHash 恒返回非空 12 位 hex，因此「两者都空则 X-Room 校验放行」不可达；已在 TestHealthWithoutRoomKeyStillWorks 断言 len(roomHash)==12 钉住该不变量。此外 auth 唯一入口就是 handleItems（bearerToken/constantTimeEqual 仅此两处调用），已全部覆盖"
+        },
+        {
+          "criterion": "新增测试在修复前能复现失败（红 → 修复 → 绿），过程写入报告",
+          "status": "passed",
+          "evidence": "修复前运行新增测试：4 子用例全红（403 / 202 / 202 / 401），其中「无 Authorization + X-Room=model.RoomHash(\"\")」直接 202，证明 fail-open 真实可达且会写历史/写剪贴板；修复后同一命令全部 PASS"
+        }
+      ],
+      "commandsRun": [
+        {
+          "command": "go test ./internal/sync/ -run 'TestItemsEmptyRoomKeyFailsClosed|TestHealthWithoutRoomKeyStillWorks|TestItemsNormalKeyRejectsEmptyBearer' -race -count=1（修复前）",
+          "status": "passed",
+          "exitCode": 1,
+          "evidence": "红：FAIL TestItemsEmptyRoomKeyFailsClosed 4 子用例 — 无 Authorization 无 X-Room=403；无 Authorization+派生 X-Room=202；Bearer 空 token+派生 X-Room=202；Bearer 任意值+派生 X-Room=401。202 即代表未鉴权请求被接收"
+        },
+        {
+          "command": "go test ./internal/sync/ -run 'TestItemsEmptyRoomKeyFailsClosed|TestHealthWithoutRoomKeyStillWorks|TestItemsNormalKeyRejectsEmptyBearer' -race -count=1（修复后）",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "绿：全部 PASS（4 子用例均 500 且 store/apply 零副作用；health 200；正常 key+空 Bearer 仍 401）"
+        },
+        {
+          "command": "go test ./internal/sync/ -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "ok clipshare/internal/sync 1.329s"
+        },
+        {
+          "command": "go test ./internal/sync/ -race -count=3",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "ok clipshare/internal/sync 1.944s（重复 3 轮无抖动）"
+        },
+        {
+          "command": "go vet ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无输出，VET_ALL_OK（含其它包测试文件编译）"
+        },
+        {
+          "command": "go test ./... -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "全模块全绿：clip/config/discovery/engine(4.734s)/history/model/sync/tray/webui 均 ok；中途一次 engine 红是队友 engine_test.go 正在保存的瞬时态（harness.start 自递归），非本次改动，其 owner 保存后即恢复"
+        }
+      ]
+    },
+    {
+      "id": "t9",
+      "subject": "Makefile 与 README（不依赖 engine 的部分）",
+      "description": "t5（cmd/main.go 组装）卡在 t4 还没完成，但构建脚本和文档的大半内容不依赖 engine 实现，先把这部分做掉，避免空等。\n\n## A. Makefile（产物进 bin/）\n\n目标：`build-linux`、`build-windows`、`test`、`vet`、`fmt`、`clean`、`all`。\n\n要求：\n- 全部 `CGO_ENABLED=0`（spec §2 已验证两平台可行，托盘库 Linux 走 DBus、Windows 走 Win32，都不需要 cgo）。\n- `build-linux` → `bin/clipshare`，`build-windows` → `bin/clipshare.exe`。\n- 版本号通过 `-ldflags \"-X main.version=$(VERSION)\"` 注入，`VERSION ?= 0.1.0`（spec §12 定的版本号）。\n- `test` = `go test ./... -race -count=1`；`vet` = `go vet ./...`；`fmt` = `gofmt -l -w .`。\n- `.PHONY` 齐全；`make` 默认目标为 `all`（= vet + test + 双平台构建）。\n- **不要**假设存在 `src/` 或 pnpm 之类，这是个纯 Go 单模块项目。\n\n## B. README.md\n\n必读 design §2（选型与平台依赖）、§6（协议与安全边界）、§7（发现与禁多播场景）、§10（错误处理）、§12（交付）。章节至少包含：\n\n1. **这是什么** —— 一句话定位 + 一张最小用法（两台机器各跑一个，复制就同步）。\n2. **前置依赖表** —— Linux：X11 需 `xclip` 或 `xsel`，Wayland 需 `wl-clipboard`（按 `WAYLAND_DISPLAY` 区分，说明为什么不能混用）；Windows：无。给出 Ubuntu 安装命令。\n3. **快速开始** —— 首启生成配置的路径（Linux `~/.config/clipshare/config.json`、Windows `%APPDATA%\\clipshare\\config.json`）、**房间码**怎么对齐（多台机器填同一个 `roomKey`，或者三台都填同一个值）、如何确认已互连（托盘状态行/`/v1/health`）。\n4. **禁多播网络怎么办** —— `mdns: false` + `seeds: [\"192.168.1.7:47100\"]` 的具体 JSON 片段，说明这是组播被禁时的唯一可用路径。\n5. **安全边界（必须直说，不要淡化）** —— 明文传输；同房间内**任何人可以读取同步流，也可以向你的剪贴板写入内容**；房间密钥只解决「谁能接入」；历史默认明文落盘（`persist: false` 可关）；Web UI 只绑 127.0.0.1。\n6. **已知行为**（design §5 的两条取舍）—— 同一内容重复复制不会重复广播（`lastSeen` 已等于该内容）；所有排序用本地接收时间，跨机时钟漂移不影响顺序但显示的是「我收到的时刻」。\n7. **配置项表** —— 每个字段名、类型、默认值、含义，与 `internal/config/config.go` 的 `Config` 结构体逐字段对齐（这是唯一真相源，别凭记忆写）。\n8. **排障** —— 端口占用、托盘不显示（GNOME 需要 AppIndicator 扩展，或 `--no-tray` 降级到 Web UI）、收不到（先 curl `/v1/health` 看 `roomHash` 是否一致）、Linux 剪贴板命令缺失的报错长什么样。\n9. **开发** —— `make test`、目录结构一行一包说明。\n\n## 重要约束\n\n- **README 里出现的每条命令都必须你亲自跑一遍并贴关键输出**（`make build-linux` 现在就能跑，`main.go` 还没有，所以涉及程序启动的命令写到「等 t5 完成后由 t5 复核」，不要编造输出）。\n- t5 会负责最终逐条复核 README 与 `--help` 输出的一致性，所以你写的是初稿，但**不许有未验证的假输出**。\n- 只写 `Makefile`、`README.md`；不执行 git 命令；不改任何 `internal/` 或 `cmd/` 代码。\n\n验证：`make build-linux` 成功产出 `bin/clipshare`；`make vet`、`make test` 通过（若 engine/tray 仍在他人手中导致 test 红，记录状态并注明「非本任务引入」，再单独跑 `go test ./internal/sync/ ./internal/clip/ -race` 证明你负责的部分是绿的）。",
+      "status": "completed",
+      "assignee": "core-net",
+      "dependencies": [],
+      "attempt": 2,
+      "createdAt": 1794394699522,
+      "updatedAt": 1794395196150,
+      "kind": "work",
+      "reassigning": false,
+      "attemptId": "78ba1791-5031-4746-bd57-f3ea2bddeb8e",
+      "output": "t9 完成：Makefile 与 README 初稿已落地（只写这两个文件，未碰 internal/ 与 cmd/，未执行 git）。\n\nA. Makefile（41 行）\n- 目标：all（默认，= vet + test + 双平台构建）、build-linux、build-windows、test、vet、fmt、clean；.PHONY 齐全。\n- 全部 CGO_ENABLED=0；build-linux → bin/clipshare（GOOS=linux），build-windows → bin/clipshare.exe（GOOS=windows），GOARCH ?= amd64 可覆盖。\n- VERSION ?= 0.1.0，LDFLAGS := -s -w -X main.version=$(VERSION)；test 为 `go test ./... -race -count=1`，vet 为 `go vet ./...`，fmt 为 `gofmt -l -w .`，clean 为 `rm -rf bin`（bin 已被 .gitignore 忽略）。\n\nB. README.md（240 行）\n- 章节：这是什么 / 前置依赖（X11 xclip|xsel、Wayland wl-clipboard + 为何不能混用、Ubuntu 安装命令）/ 快速开始（配置路径、房间码对齐、用托盘状态行与 /v1/health 的 roomHash 确认互连）/ 禁多播网络（mdns:false + seeds JSON，并警告「不要整文件覆盖，否则 deviceId/roomKey 会被重新生成」）/ 安全边界（明文、同房间可读可写你剪贴板、密钥只管接入、health 免鉴权、历史明文落盘、Web UI 只绑 127.0.0.1）/ 已知行为（lastSeen 判重、本地 recvAt、图片视为无文本、不重试）/ 配置项表（与 Config 结构体逐字段对齐 12 项，含 pollIntervalMs 与 noTray）/ 命令行参数（design §4，待 t5 用 --help 复核）/ 排障（端口占用、托盘、roomHash 不一致、缺剪贴板命令原文、headless、配置损坏、落盘失败）/ 开发（make 目标 + 一行一包目录说明）。\n- 附录「命令验证状态」：贴出 make vet/test/-n all/fmt/build-linux 的真实输出与 go1.24.0/Ubuntu 20.04 环境；未验证项（./clipshare、--help、--version、--no-tray、curl health 响应体、托盘与 /ui 地址）单列为「待 t5 复跑」，无任何编造输出。\n\n关键结论（需 captain 注意）：`make build-linux` 现在无法产出二进制——cmd/clipshare/ 目录为空，make build-linux 退出码 2，报 no Go files in .../cmd/clipshare。这不是 Makefile 的问题（配方经 make -n 验证正确），而是 t5 的 main.go 尚未落地；且需要 main.go 声明 var version（默认值随它定）供 -X main.version 注入。t5 落地后该目标即可产出 bin/clipshare，README 终稿需由 t5 复跑附录里列出的每条命令。\n\n验证：make vet 通过；make test 9 包全绿；make clean 生效；make fmt 未改写任何文件；make build-linux/build-windows 因缺 main.go 失败（已记录）；兜底 go test ./internal/sync/ ./internal/clip/ -race 全绿。",
+      "changedPaths": [
+        "Makefile",
+        "README.md"
+      ],
+      "acceptanceResults": [
+        {
+          "criterion": "Makefile 含 build-linux/build-windows/test/vet/fmt/clean/all 七个目标，.PHONY 齐全，默认目标为 all（vet+test+双平台构建）",
+          "status": "passed",
+          "evidence": "`make -n`（无参数）输出依次为：go vet ./... → go test ./... -race -count=1 → linux 构建 → windows 构建；.PHONY 列出全部 7 个目标"
+        },
+        {
+          "criterion": "全部 CGO_ENABLED=0；build-linux → bin/clipshare，build-windows → bin/clipshare.exe；VERSION ?= 0.1.0 经 -ldflags -X main.version 注入",
+          "status": "passed",
+          "evidence": "`make -n all` 输出的两条真实命令行：CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags \"-s -w -X main.version=0.1.0\" -o bin/clipshare ./cmd/clipshare，windows 同构；已贴进 README 附录"
+        },
+        {
+          "criterion": "test = go test ./... -race -count=1；vet = go vet ./...；fmt = gofmt -l -w .（均实跑）",
+          "status": "passed",
+          "evidence": "make test：9 个包全部 ok（clip/config/discovery/engine/history/model/sync/tray/webui）；make vet 无输出通过；make fmt 执行前后 `gofmt -l .` 均为空，未改写任何文件；make clean 删除 bin/（验证后 bin 不存在）"
+        },
+        {
+          "criterion": "README 九个必选章节齐全，配置项表与 internal/config/config.go 的 Config 逐字段对齐（含 pollIntervalMs、noTray）",
+          "status": "passed",
+          "evidence": "README 含：这是什么/前置依赖/快速开始/禁多播/安全边界/已知行为/配置项/命令行参数/排障/开发 + 命令验证附录；配置表 12 行逐字段对应 Config 结构体（nodeName/deviceId/roomKey/port/seeds/historyLimit/itemMaxBytes/autoApply/mdns/persist/pollIntervalMs/noTray），默认值与校验范围取自常量与 Validate（47100/500/262144/400、1–10000、1024–16777216、100–5000 等）"
+        },
+        {
+          "criterion": "README 中每条命令实跑、无编造输出；程序启动类命令标注待 t5 复核",
+          "status": "passed",
+          "evidence": "附录「命令验证状态」贴出 make vet/test/-n all/fmt/build-linux 的真实输出；未验证项单列：./clipshare、--help、--version、--no-tray、curl /v1/health 响应体、托盘菜单与 /ui 实际地址，均标注「待 t5 复跑」；依赖表依据 apt-cache policy 真实结果（xclip 0.13-1 / xsel 1.2.0+git9bfc13d.20180109-3 / wl-clipboard 2.0.0-1 均在 focal/universe）"
+        },
+        {
+          "criterion": "make build-linux 成功产出 bin/clipshare",
+          "status": "failed",
+          "evidence": "阻塞（非 Makefile 缺陷）：make build-linux 退出码 2，错误原文 no Go files in /home/haitang/src/UserCode/tools/cmd/clipshare——cmd/clipshare/main.go 尚未落地且归 t5，本任务明令禁止越界创建。配方本身已由 make -n 验证；main.go 落地后此目标即可产出 bin/clipshare"
+        }
+      ],
+      "commandsRun": [
+        {
+          "command": "make vet",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "go vet ./... → 无输出，通过"
+        },
+        {
+          "command": "make test",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "9 个包全 ok：clip 1.469s/config 1.009s/discovery 1.313s/engine 12.571s/history 1.153s/model 1.007s/sync 1.328s/tray 1.064s/webui 1.011s"
+        },
+        {
+          "command": "make -n（无参数）与 make -n all",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "默认目标即 all；输出 vet → test → linux build → windows build 的真实命令（含 CGO_ENABLED=0 与 -ldflags -X main.version=0.1.0）"
+        },
+        {
+          "command": "make fmt",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "gofmt -l -w .；执行前后 gofmt -l . 均为空，未改写任何文件（未越界修改 internal/cmd）"
+        },
+        {
+          "command": "make clean",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "rm -rf bin；随后 ls bin 报「没有那个文件或目录」，清理生效"
+        },
+        {
+          "command": "make build-linux",
+          "status": "failed",
+          "exitCode": 2,
+          "evidence": "退出码 2：no Go files in /home/haitang/src/UserCode/tools/cmd/clipshare（阻塞于 t5 的 main.go，非 Makefile 缺陷）"
+        },
+        {
+          "command": "make build-windows",
+          "status": "failed",
+          "exitCode": 2,
+          "evidence": "退出码 2：同样的 no Go files in .../cmd/clipshare"
+        },
+        {
+          "command": "go test ./internal/sync/ ./internal/clip/ -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "ok clipshare/internal/sync 1.321s; ok clipshare/internal/clip 1.462s（本任务负责部分全绿）"
+        },
+        {
+          "command": "apt-cache policy xclip xsel wl-clipboard",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "三者均有候选包：xclip 0.13-1、xsel 1.2.0+git9bfc13d.20180109-3（本机已装）、wl-clipboard 2.0.0-1；来源 focal/universe，README 安装命令据此校验"
+        }
+      ]
+    },
+    {
+      "id": "t10",
+      "subject": "engine.Version 改为可注入，修复 --version 与 /v1/health 版本不一致",
+      "description": "captain 在准备 t5（main.go 组装）时发现的一处不一致，改动很小但会导致版本号撒谎。\n\n## 问题\n\n`internal/engine/engine.go` 里：\n\n```go\nconst (\n\t// Version 是协议握手与 /v1/health 上报的版本号。\n\tVersion = \"0.1.0\"\n\t...\n)\n```\n\n`Version` 是**常量**。但 Makefile 用 `-ldflags \"-X main.version=$(VERSION)\"` 把版本注入 `main.version`，所以：\n\n- `clipshare --version` 打印 ldflags 注入的值（例如 `0.2.0`）\n- 而 `/v1/health` 与任何用 `engine.Version` 的地方永远上报 `0.1.0`\n\n用户按 README 用 `make build-linux VERSION=0.2.0` 构建后，两台机器的实际二进制版本与它们互相上报的版本就会不一致——排障时会把「版本不同」这种真问题漏掉。\n\n## 要求\n\n1. 把 `Version` 从 `const` 改为 `var Version = \"0.1.0\"`（`SnapshotRecent`、`shutdownTimeout` 等仍留在 const 块里，别一起改）。\n2. 注释写清：**默认值 0.1.0 仅作为独立运行 engine 包（如测试）时的兜底；`main` 会在 `Start` 之前用 ldflags 注入的真实版本覆盖它**。\n3. 加测试证明「注入后上报值跟着变」：在 engine 测试里把 `Version` 设为 `\"9.9.9-test\"`，请求 `/v1/health` 断言 `version == \"9.9.9-test\"`，再用 `t.Cleanup` 恢复原值（避免污染其它测试）。若 engine 已有 httptest 打 health 的工具函数，直接复用。\n4. 确认 `Version` 的两处使用（engine.go 中 `ServerConfig.Version` 与健康检查路径）都读同一个变量、没有第二处硬编码 `\"0.1.0\"`（`grep -rn '0.1.0' internal/` 自查并报告结果）。\n\n## 验证\n\n- `go test ./internal/engine/ -race -count=1` 全绿\n- `go test ./... -race` 全绿\n- `go vet ./...`、`gofmt -l` 干净\n- 报告里贴 `grep -rn '0.1.0' internal/ cmd/` 的真实输出\n\n约束：只改 `internal/engine/`；不执行 git 命令；不要改 `cmd/clipshare`（那是 t5）。",
+      "status": "completed",
+      "assignee": "engine-core",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1794395291462,
+      "updatedAt": 1794395447195,
+      "kind": "work",
+      "attemptId": "666056ea-3078-4805-ad92-97cb9d86fd69",
+      "reassigning": false,
+      "output": "t10 完成：engine.Version 从 const 改为可注入的 var，--version 与 /v1/health 的版本口径已统一。只改 internal/engine/ 两个文件，未动 cmd/clipshare，未执行 git。\n\n改动\n1) engine.go：const 块只留 SnapshotRecent 与 shutdownTimeout；`var Version = \"0.1.0\"` 独立声明。注释明确：默认值 0.1.0 只是独立运行 engine 包（单测、未注入版本的裸 go run）的兜底；main 用 ldflags 注入真实版本后在调用 Start 之前覆盖它，保证 --version 与两台机器互相上报的版本一致；并注明唯一读取点是 Start 里的 sync.ServerConfig.Version（以及 discovery 的 Version），不要在别处再硬编码。\n2) engine_test.go：新增 TestVersionInjectionReportedByHealth —— 先把 Version 设为 \"9.9.9-test\"、t.Cleanup 恢复原值，再启动引擎并 GET /v1/health，断言 200 且 version == \"9.9.9-test\"，同时校验 nodeId/name/roomHash 正确。\n\n自查 grep 结论（贴真实输出要点）\n- internal/engine 内 \"0.1.0\" 只剩两处：engine.go:52 注释、engine.go:55 变量声明本身。\n- 版本读取点两处均为变量：engine.go:156（sync.ServerConfig.Version）、engine.go:449（discovery.Config.Version）。\n- 其它命中与本任务无关：tray_test.go:58/59 与 sync 的 broadcast_test/server_test 是各自包内的测试字面量；engine_test.go:91 是 `127.0.0.1:0` 端口误匹配；clip/retry_windows.go:8 是「20/60/150ms」退避误匹配。版本上报路径上没有第二处硬编码。\n- cmd/clipshare/main.go 已由 core-net 接上：`engine.Version = version`（第 172 行），链路闭环。\n\n验证（全 exit 0）：go build ./...；go vet ./...；gofmt -l internal/engine 无输出；go test ./internal/engine/ -race 全绿（13s）；go test ./... -race 10 个包全绿（含 cmd/clipshare）。\n\n过程说明：期间有一次 go build ./... / go test ./... 因 cmd/clipshare/main.go 正在被 core-net 编辑而短暂报 `undefined: model`，等其落盘后重跑即全绿；该文件不在我的改动范围内，未做任何修改。",
+      "changedPaths": [
+        "internal/engine/engine.go",
+        "internal/engine/engine_test.go"
+      ],
+      "acceptanceResults": [
+        {
+          "criterion": "Version 从 const 改为 var Version = \"0.1.0\"，SnapshotRecent / shutdownTimeout 仍留在 const 块",
+          "status": "passed",
+          "evidence": "engine.go：const 块仅剩 SnapshotRecent 与 shutdownTimeout；紧接着 var Version = \"0.1.0\" 独立声明"
+        },
+        {
+          "criterion": "注释写清默认值是兜底、main 会在 Start 前用 ldflags 注入值覆盖",
+          "status": "passed",
+          "evidence": "engine.go Version 注释：默认 0.1.0 仅作为独立运行 engine 包（单测/裸 go run）的兜底；main 用 -X main.version 注入后在调用 Start 之前覆盖；并注明唯一读取点，勿再硬编码"
+        },
+        {
+          "criterion": "加测试：Version 设为 9.9.9-test 后 /v1/health 上报该值，t.Cleanup 恢复原值",
+          "status": "passed",
+          "evidence": "engine_test.go TestVersionInjectionReportedByHealth：old := Version → 9.9.9-test → t.Cleanup 恢复 → 起 harness 后 GET /v1/health，断言 version==9.9.9-test、200、nodeId/name/roomHash 同时正确；-v 单跑 PASS"
+        },
+        {
+          "criterion": "两处使用（ServerConfig.Version 与健康检查路径）读同一变量，无第二处硬编码 0.1.0",
+          "status": "passed",
+          "evidence": "grep -n 'Version:' internal/engine/*.go → engine.go:156（sync.ServerConfig.Version）与 engine.go:449（discovery.Config.Version），均为 Version 变量；grep -rn '0.1.0' internal/ cmd/ 在 internal/engine 内只剩声明处 engine.go:55 与注释 line 52，其余命中均为其它包的测试字面量（tray_test、sync/*_test）与 clip 的 20/60/150 无关匹配，不在版本上报路径上"
+        },
+        {
+          "criterion": "验证：go test ./internal/engine/ -race 全绿，go test ./... -race 全绿，go vet ./... 与 gofmt -l 干净",
+          "status": "passed",
+          "evidence": "engine 13.0s ok；go test ./... -race 10 个包全 ok（含 cmd/clipshare）；go vet ./... 无告警；gofmt -l internal/engine 无输出"
+        }
+      ],
+      "commandsRun": [
+        {
+          "command": "grep -rn '0.1.0' internal/ cmd/",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "internal/tray/tray_test.go:58,59（测试字面量）；internal/engine/engine.go:52（注释）、55（var 声明）；internal/engine/engine_test.go:91（端口 :0 误匹配）；internal/clip/retry_windows.go:8（20/60/150 退避误匹配）；internal/sync/broadcast_test.go:25、server_test.go:61,219,251,363（测试字面量）。版本上报路径上无第二处硬编码"
+        },
+        {
+          "command": "go build ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "全仓编译通过，无输出"
+        },
+        {
+          "command": "go vet ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无告警"
+        },
+        {
+          "command": "gofmt -l internal/engine",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无输出（格式合规）"
+        },
+        {
+          "command": "go test ./internal/engine/ -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "ok clipshare/internal/engine 12.980s（含新增 TestVersionInjectionReportedByHealth）"
+        },
+        {
+          "command": "go test ./... -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "10 个包全 ok：cmd/clipshare、clip、config、discovery、engine、history、model、sync、tray、webui"
+        }
+      ]
+    },
+    {
+      "id": "t11",
+      "subject": "修复 engine 忽略 --config-dir 的 bug（托盘开关写回默认目录）",
+      "description": "core-net 在 t5 收尾时上报的真 bug，captain 已确认代码位置（`internal/engine/engine.go:110`）。\n\n## 问题\n\n`engine.New` 里用 `config.Dir()` 自己推算配置目录，**完全忽略调用方传给 `config.Load(dir)` 的目录**：\n\n```go\ndir, err := config.Dir()   // engine.go:110\n...\ncfgDir: dir,               // 托盘开关保存时用 e.cfgDir（engine.go:535-538）\n```\n\n后果（不是理论问题，会直接影响我们自己的验收流程）：\n- 用户带 `--config-dir /tmp/a` 运行时，托盘里切换「自动应用 / mDNS」会把配置写回**默认目录**，在那里凭空多出一份 `config.json`。\n- 更糟的是 **t6 的双进程实测**正是用两个不同 `--config-dir` 起两个实例 —— 两个实例的开关会写回同一个默认配置目录、互相覆盖，测试结论会不可信。\n\n## 修复方案（captain 已定，按此做，改动很小）\n\n1. `internal/config/config.go`：给 `Config` 增加一个**不落盘**的字段\n   ```go\n   // Dir 是本次运行实际使用的配置目录（运行期字段，不写入 JSON）。\n   // 由 Load 填入，供 engine 等处保存配置时复用，避免各处各自推算而分叉。\n   Dir string `json:\"-\"`\n   ```\n   并在 `Load(dir)` 的**每一条返回路径**上填 `cfg.Dir = dir`（正常加载、文件缺失新建、损坏后重建三种情况都要）。\n2. `internal/engine/engine.go`：优先用 `cfg.Dir`，为空时回退 `config.Dir()`（保证测试里直接构造 `&config.Config{...}` 的旧用法不炸）：\n   ```go\n   dir := cfg.Dir\n   if dir == \"\" { dir, err = config.Dir(); ... }\n   ```\n3. **不需要改 `cmd/clipshare/main.go`** —— main 已经用 `config.Load(cfgDir)`，Load 会自动填好 `Dir`。这是选择这个方案的原因。\n\n## 本任务允许跨包\n\n**你被授权修改 `internal/config/config.go`（只新增上述字段并在 Load 里赋值，其余一律不动）**。core-net 当前空闲、不会同时改这两个文件，不用协调。除此之外仍只写 `internal/engine/`。\n\n## 测试要求\n\n- `internal/config`：`Load(dir)` 后 `cfg.Dir == dir`，且 `Save` 出来的 JSON **不含** `dir` 字段（用 `json.Unmarshal` 到 map 断言无该键）。\n- `internal/engine`：构造 `cfg.Dir = t.TempDir()` 的 engine，调 `SetAutoApply(!原值)`，断言**该临时目录**下出现/更新了 `config.json`；同时断言默认目录没有被创建或未被修改（默认目录用 `config.Dir()` 拿，若不存在则断言仍不存在 —— 先记录存在性再比较）。\n- 原有测试必须全绿。\n\n## 验证\n\n`go test ./internal/config/ ./internal/engine/ -race -count=1` 全绿；`go test ./... -race` 全绿；`go vet ./...`、`gofmt -l` 干净。\n\n完成后报告里请说明：三种 Load 路径是否都填了 `Dir`；engine 回退分支是否被测试覆盖（没有的话加一条）。",
+      "status": "completed",
+      "assignee": "engine-core",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1794395792658,
+      "updatedAt": 1794395916567,
+      "kind": "work",
+      "attemptId": "3ba30bde-7ee3-4cf6-84f8-1660befb2623",
+      "reassigning": false,
+      "output": "t11 完成：engine 不再忽略 --config-dir，托盘开关写回调用方指定的配置目录。共改 4 文件（config.go/config_test.go/engine.go/engine_test.go），未动 cmd/clipshare，未执行 git。\n\n修复\n1) internal/config/config.go：Config 新增运行期字段 `Dir string `json:\"-\"``（不落盘），Load 在**三条返回 cfg 的路径**上都填 cfg.Dir = dir：\n   - 文件缺失 → Default() 后立即赋值再 Save（Save 失败时返回的 cfg 也带 Dir）；\n   - JSON 损坏 → 备份 .bak 重建默认配置时同样赋值；\n   - 正常加载 → applyJSON 之前赋值。\n   另两条路径返回 nil（读文件失败、Validate 失败），无需赋值。Load 文档已写明调用方应复用 Dir。\n\n2) internal/engine/engine.go：新增 configDirFor(cfg)——优先 cfg.Dir（即 --config-dir），为空回退 config.Dir()，两者都不可用时 cfgDir=\"\" 并记 lastErr；New 的 cfgDir 改用该函数。cmd/clipshare/main.go 未改（它已走 config.Load(cfgDir)，自动获得 Dir）。\n\n测试\n- internal/config：TestLoadFillsRuntimeDir（新建/已有/损坏重建三条路径均断言 cfg.Dir==dir）、TestDirNotPersisted（改 cfg.Dir 后 Save，JSON 到 map 断言无 dir/Dir 键）。\n- internal/engine：TestSetAutoApplyWritesToInjectedConfigDir（cfg.Dir=t.TempDir() → 断言 e.cfgDir 等于该目录、SetAutoApply 后该目录出现 config.json 且值正确；同时先记录 config.Dir() 默认目录下 config.json 的存在性与内容，t.Cleanup 比对确认未被创建也未改写）、TestConfigDirFallbackWhenUnset（cfg.Dir=\"\" 时回退到 config.Dir()，覆盖回退分支）。harness 也改为通过 cfg.Dir 注入，走与 main 一致的路径。\n\n验证（全 exit 0）：go build ./...；go vet ./...；gofmt -l internal/config internal/engine 无输出；go test ./internal/config/ ./internal/engine/ -race 全绿（含 4 个新增测试）；go test ./... -race 10 个包全绿。",
+      "changedPaths": [
+        "internal/config/config.go",
+        "internal/config/config_test.go",
+        "internal/engine/engine.go",
+        "internal/engine/engine_test.go"
+      ],
+      "acceptanceResults": [
+        {
+          "criterion": "internal/config：Config 新增不落盘字段 Dir string `json:\"-\"`，并在 Load(dir) 三条返回 cfg 的路径上都赋 cfg.Dir = dir",
+          "status": "passed",
+          "evidence": "config.go:48 字段定义；三条赋值路径：文件缺失新建（:113，Save 前就赋值，Save 失败返回的 cfg 也带 Dir）、损坏重建（:128）、正常加载（:136）；另外读文件失败与 Validate 失败两条路径返回 nil，无需 Dir。Load 文档写明「成功返回的 Config 都会带上 Dir=dir，调用方应复用」"
+        },
+        {
+          "criterion": "internal/engine：优先用 cfg.Dir，为空时回退 config.Dir()；不改 cmd/clipshare",
+          "status": "passed",
+          "evidence": "engine.go 新增 configDirFor(cfg)：cfg.Dir 非空即用，否则 config.Dir()，都不可用时 cfgDir=\"\" 并记 lastErr；New 的 cfgDir 改由它决定。cmd/clipshare 未改（main 走 config.Load(cfgDir)，自动拿到 Dir）"
+        },
+        {
+          "criterion": "config 测试：Load 后 cfg.Dir == dir（三种路径），且 Save 的 JSON 不含 dir 字段",
+          "status": "passed",
+          "evidence": "TestLoadFillsRuntimeDir 三个子测试（新建/已有文件/损坏重建）全 PASS；TestDirNotPersisted 把 cfg.Dir 改成别的路径后 Save，json.Unmarshal 到 map 断言既无 \"dir\" 也无 \"Dir\" 键，PASS"
+        },
+        {
+          "criterion": "engine 测试：cfg.Dir = t.TempDir() 的 engine 调 SetAutoApply 后写回该临时目录，且默认目录未被创建/修改；回退分支有覆盖",
+          "status": "passed",
+          "evidence": "TestSetAutoApplyWritesToInjectedConfigDir：断言 e.cfgDir==注入目录、写入后该目录出现 config.json 且 autoApply==!原值，同时先记录 config.Dir() 默认目录下 config.json 的存在性与内容、t.Cleanup 比对未被创建也未改写，PASS；TestConfigDirFallbackWhenUnset：cfg.Dir=\"\" 时 e.cfgDir == config.Dir()，覆盖回退分支，PASS。harness 也改为通过 cfg.Dir 注入，走真实路径"
+        },
+        {
+          "criterion": "验证：go test ./internal/config/ ./internal/engine/ -race 全绿、go test ./... -race 全绿、go vet ./... 与 gofmt -l 干净",
+          "status": "passed",
+          "evidence": "config 1.0s ok、engine 12.8s ok；go test ./... -race 10 包全 ok；go vet ./... 无告警；gofmt -l internal/config internal/engine 无输出"
+        }
+      ],
+      "commandsRun": [
+        {
+          "command": "go build ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "编译通过，无输出"
+        },
+        {
+          "command": "go vet ./...",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无告警"
+        },
+        {
+          "command": "gofmt -l internal/config internal/engine",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "无输出（格式合规）"
+        },
+        {
+          "command": "go test ./internal/config/ ./internal/engine/ -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "ok config 1.011s；ok engine 12.776s，含 4 个新增测试"
+        },
+        {
+          "command": "go test ./... -race -count=1",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "10 个包全 ok（cmd/clipshare、clip、config、discovery、engine、history、model、sync、tray、webui）"
+        },
+        {
+          "command": "go test ./internal/config/ -race -run 'TestLoadFillsRuntimeDir|TestDirNotPersisted' -v",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "三个 Load 路径子测试 + 不落盘断言全部 PASS"
+        },
+        {
+          "command": "go test ./internal/engine/ -race -run 'TestSetAutoApplyWritesToInjectedConfigDir|TestConfigDirFallbackWhenUnset' -v",
+          "status": "passed",
+          "exitCode": 0,
+          "evidence": "注入目录写回 + 默认目录未被污染 + 回退分支，全部 PASS"
+        }
+      ]
+    }
+  ],
+  "taskSeq": 11,
+  "approvedAt": 1794394020003
+}
