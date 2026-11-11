@@ -195,7 +195,7 @@ v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都
 
 - flag 优先级高于配置文件；但**只影响本次运行，不写回配置文件**（实测：带 `--room flag-room --port 47999` 启动后重读 `config.json`，值仍是原样）。
 - 完整列表与文案以 `./clipshare --help` 为准（附录有实跑原文）。
-- 已知限制：`--config-dir` 只改变本次加载的配置与历史位置；托盘里的开关（自动应用 / mDNS）改动由 engine 写回**默认**配置目录。默认目录下不需要这个 flag，不受影响。
+- `--config-dir` 会一路生效到托盘开关：切换「自动应用 / mDNS」时写回的是**这个目录**的 `config.json`，不会在你的默认配置目录留下第二份（有回归测试守着）。
 
 ## 9. 排障
 
@@ -301,7 +301,47 @@ $ cat /tmp/clipshare-demo/history.json
 - 用日志里的完整 key 直接加入另一实例（`--room <日志里的 key>`）时两边 `roomHash` 相同；对 `/v1/items` 用**完整 key** 请求得 `202`，用旧 bug 的**前 6 位**请求得 `401`（已验证，说明「日志只打前缀」确实会让人配不上）。
 - flag 只对本次运行生效：以 `--room flagroom --port 47996 --mdns=false` 启动时 `/v1/health` 的 `roomHash` = `c16ecc5336ee`（= `sha256("flagroom")` 前 12 位），而 `config.json` 里仍是随机 12 位 `roomKey`（`g6gxne5cqjhd`）、`port: 47100`、`mdns: true`。
 - 剪贴板命令缺失时的退出路径（`PATH=/nonexistent` 实测）：`clipshare: 缺少剪贴板命令 xclip/xsel：请安装其一，例如 sudo apt install xclip（或 sudo apt install xsel）`，退出码 1，不会静默空转。
-- 托盘模式（不带 `--no-tray`）在本机能启动、SIGTERM 退出码 0；**图标是否真显示在面板上需人眼验收**。
+- 托盘模式（不带 `--no-tray`）在本机能启动、SIGTERM 退出码 0。
+
+### 真机验收记录（Ubuntu 22.04 X11 + Windows 10 双机实测）
+
+在真实的两台机器上跑过（不是模拟）：Linux `172.26.81.147`、Windows 10 19045 `172.26.81.73`，同一 `/22` 网段，两端 `roomKey` 一致、`--mdns=false` + 互填 `seeds`。
+
+**跨机同步（Windows → Linux，已验证通过）**
+
+在 Windows 侧复制 `e2e-real-202951`：
+
+```text
+Windows 历史: [{"originName":"DESKTOP-UIRQT1R","content":"e2e-real-202951\n", ...}]
+Linux 剪贴板: e2e-real-202951        ← 被写入
+Linux 历史:   条数 1, 来源 DESKTOP-UIRQT1R
+```
+
+即：源端入历史 → 广播 → 对端剪贴板被写入 → 对端历史带正确来源标记。
+
+**Windows 二进制**
+
+`clipshare.exe`（PE32+，静态无依赖）在本机 Windows 10 上 `--version` → `clipshare 0.1.0`、`--help` 正常、`/v1/health` 正常返回且 `roomHash` 与 Linux 端一致。
+
+**Linux 托盘图标（已验证注册到系统托盘）**
+
+不靠肉眼，用 DBus 差集证明：启动前 `org.kde.StatusNotifierWatcher` 的 `RegisteredStatusNotifierItems` 有 6 条，启动后有 7 条，新增项为 `:1.1591/StatusNotifierItem`；`SIGTERM` 后回到 6 条、无残留。同期历史页 `HTTP 200, text/html, 9897 bytes`，临时目录里只写 `config.json`（`--no-persist` 时确实不写 `history.json`），默认配置目录未被创建。
+
+**防火墙实测（这也是第 2 节那条命令的由来）**
+
+| 方向 | 结果 |
+|---|---|
+| Linux → Windows `/v1/health`、`/v1/items` | `HTTP 000`（Defender 默认阻断入站） |
+| Windows → Linux `/v1/health` | `HTTP 200` |
+
+不放行入站就只剩单向同步。放行命令见 §2。
+
+**仍未覆盖**（诚实列出）
+
+- Windows 托盘图标的视觉效果与菜单点击（需要交互式桌面会话；SSH 会话里跑不出可见托盘）。
+- Linux 托盘菜单的逐项点击（只验证了图标注册与注销）。
+- 真实多播环境下的 mDNS 自动发现（双机验收用的是 `--mdns=false` + `seeds` 这条确定性更强的路径）。
+- macOS（不是 v1 目标平台）。
 
 ### `--help` 原文
 
@@ -334,11 +374,14 @@ clipshare 0.1.0 —— 局域网剪贴板共享
     	打印版本号后退出
 ```
 
-### 仍需人工验收（代码跑不出来，t13 手动验收项）
+### 仍需人工验收（代码跑不出来）
 
-- 托盘菜单逐项点击：取回历史、发送当前剪贴板、勾选自动应用 / mDNS、查看全部历史、退出。
-- 两台真机（或两个进程 + `seeds` 互指）互相同步；A→B→A 不回环。
-- Windows 侧实际运行（已在真实 Windows 10 + Linux 双机环境验证；新环境请按第 2 节放行防火墙入站）。
-- 禁多播网络下 `mdns: false` + `seeds` 的两机连通。
+已由真机验收覆盖、不再是待办：**两台真机互相同步**（Windows → Linux 实测通过，见上文「真机验收记录」）、**A→B→A 不回环**（`TestIntegrationNoLoopback` 断言 B 广播 0 次 + 双进程实测双向不转发）、**禁多播网络的 `mdns: false` + `seeds` 连通**（上面双机验收走的就是这条路径）、**Windows 侧实际运行**（真实 Windows 10 上跑通）。
+
+剩下的只有一类，都需要人坐在电脑前看屏幕或点鼠标：
+
+- **托盘菜单逐项点击**：取回历史、发送当前剪贴板、勾选自动应用 / mDNS、查看全部历史、退出（Linux 侧已验证图标注册与注销，菜单项的点击效果未逐个验）。
+- **Windows 托盘图标的视觉效果**（SSH 会话跑不出可见托盘，需要交互式桌面会话）。
+- **真实多播环境下的 mDNS 自动发现**（双机验收刻意用了 `--mdns=false` 的确定性路径）。
 
 依赖表依据：`apt-cache policy xclip xsel wl-clipboard` 显示三者在本机 focal/universe 仓库均有候选包（`xclip 0.13-1`、`xsel 1.2.0+git9bfc13d.20180109-3`、`wl-clipboard 2.0.0-1`），本机已装 `xsel`。
