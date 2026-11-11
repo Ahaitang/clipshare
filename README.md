@@ -72,9 +72,31 @@ make build-windows    # → bin/clipshare.exe（可在任一台机器上交叉�
 curl -s http://192.168.1.7:47100/v1/health
 ```
 
-返回四个字段：`nodeId`、`name`、`version`、`roomHash`。两台的 `roomHash` 必须相同——它等于 `sha256(roomKey)` 的前 12 位；不同就是 `roomKey` 没对齐。
+返回四个字段：`nodeId`、`name`、`version`、`roomHash`。两台的 `roomHash` 必须相同——它等于 `sha256(roomKey)` 的前 12 位；不同就是 `roomKey` 没对齐。`version` 与 `./clipshare --version` 打印的是同一个值。
 
-> 本机历史页：托盘菜单「查看全部历史…」，地址形如 `http://127.0.0.1:47100/ui`，只绑回环地址、不鉴权。实际地址以启动日志打印的为准。
+**一次真实启动的输出**（本机实测：Ubuntu 20.04 / go1.24.0；用 `--config-dir /tmp/clipshare-demo` 避免污染用户目录，`--no-tray` 方便贴日志）：
+
+```console
+$ ./bin/clipshare --version
+clipshare 0.1.0
+
+$ ./bin/clipshare --no-tray --port 47999 --config-dir /tmp/clipshare-demo
+2026/11/11 19:13:29 [engine] 启动完成：节点 haitang（914322），端口 47999，房间 978a2c6040ce
+2026/11/11 19:13:29 clipshare 0.1.0 已启动：节点 "haitang"，端口 47999，房间 978a2c6040ce
+2026/11/11 19:13:29 配置文件: /tmp/clipshare-demo/config.json
+2026/11/11 19:13:29 本地历史页: http://127.0.0.1:48000/ui
+2026/11/11 19:13:29 房间码: 6adeyu —— 其他机器填同一个 roomKey 才能互通
+2026/11/11 19:13:29 首次启动：已生成配置 /tmp/clipshare-demo/config.json；把各台机器的 roomKey 改成同一个值，再分别启动
+2026/11/11 19:13:29 已禁用托盘（--no-tray）：本地历史页 http://127.0.0.1:48000/ui，Ctrl+C 退出
+
+$ curl -s http://127.0.0.1:47999/v1/health
+{"nodeId":"914322a9fb0d7e9055d818033ff0f06c","name":"haitang","version":"0.1.0","roomHash":"978a2c6040ce"}
+
+$ curl -s -o /dev/null -w 'HTTP %{http_code}, %{content_type}, %{size_download} bytes\n' http://127.0.0.1:48000/ui
+HTTP 200, text/html; charset=utf-8, 9897 bytes
+```
+
+> **本机历史页**：端口 = 同步端口 + 1（默认 `47100` → `http://127.0.0.1:47101/ui`），只绑回环地址、不鉴权；该端口被占用时会自动换一个，实际地址以启动日志里「本地历史页: …」那行为准。托盘菜单「查看全部历史…」直接打开它。
 
 ## 4. 禁多播网络怎么办（企业 Wi-Fi / 隔离 VLAN）
 
@@ -111,6 +133,7 @@ v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都
 2. **所有排序与显示都用本机接收时间**（`recvAt`）：跨机时钟漂移不影响顺序，但显示的是「我收到的时刻」，不是发送方的时间。
 3. **图片 / 非文本**：剪贴板里没有文本时视为「无变化」，不入历史、不广播。
 4. **不重试**：广播失败或超时（3s）只记日志——剪贴板内容有过期语义，延迟重发会造成「你以为复制了 A，剪贴板后来跳成 B」的时序错乱。
+5. **暂停是「外向」开关**：不广播本机内容、不写本机剪贴板；但**远端条目仍会进入本地历史**（历史与剪贴板是两条独立通道，与关闭「自动应用」时的行为一致）。
 
 ## 7. 配置项（`config.json`）
 
@@ -139,13 +162,17 @@ v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都
 |---|---|
 | `--room <key>` | 覆盖配置里的 `roomKey` |
 | `--name <name>` | 覆盖 `nodeName` |
-| `--port <port>` | 覆盖 `port` |
-| `--seed <host:port>` | 追加一个静态 seed（在配置 `seeds` 之外） |
+| `--port <port>` | 覆盖 `port`（默认 `47100`） |
+| `--seed <host:port>` | 追加一个静态 seed，可重复指定（给禁多播网络用） |
+| `--mdns` | 启用 mDNS 自动发现（默认开）；用 `--mdns=false` 关闭，改为只连 `seeds` |
 | `--no-tray` | 不初始化托盘，改用本地历史页 |
 | `--no-persist` | 不落盘历史（等价 `persist: false`） |
-| `--version` | 打印版本号（构建时由 `-ldflags -X main.version` 注入，默认 `0.1.0`） |
+| `--config-dir <dir>` | 配置目录（默认取系统用户配置目录下的 `clipshare/`） |
+| `--version` | 打印 `clipshare <version>` 后退出（版本由构建时 `-ldflags -X main.version` 注入） |
 
-flag 优先级高于配置文件。完整列表与文案以 `./clipshare --help` 为准（见附录：该输出尚未复核）。
+- flag 优先级高于配置文件；但**只影响本次运行，不写回配置文件**（实测：带 `--room flag-room --port 47999` 启动后重读 `config.json`，值仍是原样）。
+- 完整列表与文案以 `./clipshare --help` 为准（附录有实跑原文）。
+- 已知限制：`--config-dir` 只改变本次加载的配置与历史位置；托盘里的开关（自动应用 / mDNS）改动由 engine 写回**默认**配置目录。默认目录下不需要这个 flag，不受影响。
 
 ## 9. 排障
 
@@ -190,51 +217,95 @@ internal/webui     本地历史页（只绑 127.0.0.1）
 docs/superpowers/specs/  设计文档与任务拆解
 ```
 
-## 附录：命令验证状态（初稿，定稿时需逐条复跑）
+## 附录：命令验证状态（定稿）
 
-**已在本机实跑**（Ubuntu 20.04.6 LTS，`go1.24.0 linux/amd64`）：
+环境：Ubuntu 20.04.6 LTS，`go1.24.0 linux/amd64`，`DISPLAY=:1`（无 `WAYLAND_DISPLAY`），已装 `xsel`。
+以下每条命令都在本机真跑过，输出为原文。
 
 ```console
-$ make vet
-go vet ./...
-# 无输出 = 通过
-
-$ make test
-go test ./... -race -count=1
-ok  	clipshare/internal/clip	1.469s
-ok  	clipshare/internal/config	1.009s
-ok  	clipshare/internal/discovery	1.314s
-ok  	clipshare/internal/engine	12.574s
-ok  	clipshare/internal/history	1.138s
-ok  	clipshare/internal/model	1.007s
-ok  	clipshare/internal/sync	1.324s
-ok  	clipshare/internal/tray	1.050s
-ok  	clipshare/internal/webui	1.013s
-
-$ make -n all
+$ make all
 go vet ./...
 go test ./... -race -count=1
-mkdir -p bin
+ok  	clipshare/cmd/clipshare	1.014s
+ok  	clipshare/internal/clip	1.462s
+ok  	clipshare/internal/config	1.012s
+ok  	clipshare/internal/discovery	1.316s
+ok  	clipshare/internal/engine	12.980s
+ok  	clipshare/internal/history	1.139s
+ok  	clipshare/internal/model	1.008s
+ok  	clipshare/internal/sync	1.327s
+ok  	clipshare/internal/tray	1.052s
+ok  	clipshare/internal/webui	1.015s
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=0.1.0" -o bin/clipshare ./cmd/clipshare
-mkdir -p bin
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=0.1.0" -o bin/clipshare.exe ./cmd/clipshare
 
-$ make fmt
-gofmt -l -w .
-# 执行前后 `gofmt -l .` 均为空，未改写任何文件
+$ ls -l bin/
+-rwxrwxr-x 1 haitang haitang 9801912 11月 11 19:12 clipshare
+-rwxrwxr-x 1 haitang haitang 7737856 11月 11 19:12 clipshare.exe
 
-$ make build-linux
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=0.1.0" -o bin/clipshare ./cmd/clipshare
-no Go files in /home/haitang/src/UserCode/tools/cmd/clipshare
-make: *** [Makefile:23：build-linux] 错误 1
+$ file bin/clipshare bin/clipshare.exe
+bin/clipshare:     ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, BuildID[sha1]=65a1d09cab5bb1dfaf18ce1334971f6662d6ea3b, stripped
+bin/clipshare.exe: PE32+ executable (console) x86-64, for MS Windows
 ```
 
-> **阻塞项**：`cmd/clipshare/main.go` 尚未落地（归 t5），所以两个 build 目标当前只能跑到「找不到 Go 文件」。main.go 需要声明 `var version = "dev"` 之类的变量供 `-X main.version` 注入，落地后 `make build-linux` 应产出 `bin/clipshare`。
+### 运行期行为（`--no-tray`，真实剪贴板）
+
+```console
+$ printf 't5-accept-%s' "$(date +%s)" | xsel --clipboard --input   # 模拟用户复制
+$ curl -s http://127.0.0.1:48000/ui/api/entries
+[{"id":"c7bd2e269e14eee1","origin":"914322a9fb0d7e9055d818033ff0f06c","originName":"haitang","content":"t5-accept-1794395611","recvAt":"2026-11-11T19:13:31.198421456+08:00"}]
+
+$ kill -TERM <pid>          # exit=0；日志末两行：
+收到信号 terminated，开始退出…
+[engine] 已停止
+
+$ cat /tmp/clipshare-demo/history.json
+[{"id":"c7bd2e269e14eee1","origin":"914322a9fb0d7e9055d818033ff0f06c","originName":"haitang","content":"t5-accept-1794395611","recvAt":"2026-11-11T19:13:31.198421456+08:00"}]
+```
+
+- `/v1/health` 的 `version` 与 `--version` 都是 `0.1.0`（同一个注入值，已核对）。
+- SIGTERM 后历史已落盘（`history.json` 里是真实剪贴板条目）。
+- 端口冲突时报 `clipshare: 端口 47999 无法监听（可能已被占用），用 --port 或配置里的 port 换一个: listen tcp :47999: bind: address already in use`，退出码 1。
+- flag 只对本次运行生效：以 `--room flagroom --port 47996 --mdns=false` 启动时 `/v1/health` 的 `roomHash` = `c16ecc5336ee`（= `sha256("flagroom")` 前 12 位），而 `config.json` 里仍是随机 `roomKey`（`hshujd`）、`port: 47100`、`mdns: true`。
+- 剪贴板命令缺失时的退出路径（`PATH=/nonexistent` 实测）：`clipshare: 缺少剪贴板命令 xclip/xsel：请安装其一，例如 sudo apt install xclip（或 sudo apt install xsel）`，退出码 1，不会静默空转。
+- 托盘模式（不带 `--no-tray`）在本机能启动、SIGTERM 退出码 0；**图标是否真显示在面板上需人眼验收**。
+
+### `--help` 原文
+
+```console
+$ ./bin/clipshare --help
+clipshare 0.1.0 —— 局域网剪贴板共享
+
+用法：clipshare [选项]
+
+不写选项时完全使用配置文件（首次启动自动生成）。flag 优先级高于配置文件。
+
+选项：
+  -config-dir string
+    	配置目录（默认取系统用户配置目录下的 clipshare/）
+  -mdns
+    	是否启用 mDNS 自动发现；用 --mdns=false 关闭，改为只连 seeds (default true)
+  -name string
+    	本机显示名，覆盖配置里的 nodeName（默认主机名）
+  -no-persist
+    	不把历史落盘（等价于配置里的 persist: false）
+  -no-tray
+    	不初始化托盘，改用本地历史页（无 DBus / 无 AppIndicator 扩展时用）
+  -port int
+    	HTTP 监听端口，覆盖配置里的 port（默认 47100）
+  -room string
+    	房间码，覆盖配置里的 roomKey；多台机器必须填同一个
+  -seed value
+    	追加一个静态节点地址 host:port（可重复指定；给禁多播网络用）
+  -version
+    	打印版本号后退出
+```
+
+### 仍需人工验收（代码跑不出来，t13 手动验收项）
+
+- 托盘菜单逐项点击：取回历史、发送当前剪贴板、勾选自动应用 / mDNS、查看全部历史、退出。
+- 两台真机（或两个进程 + `seeds` 互指）互相同步；A→B→A 不回环。
+- Windows 侧实际运行。
+- 禁多播网络下 `mdns: false` + `seeds` 的两机连通。
 
 依赖表依据：`apt-cache policy xclip xsel wl-clipboard` 显示三者在本机 focal/universe 仓库均有候选包（`xclip 0.13-1`、`xsel 1.2.0+git9bfc13d.20180109-3`、`wl-clipboard 2.0.0-1`），本机已装 `xsel`。
-
-**尚未验证（无二进制，禁止编造输出；定稿时复跑）**：
-
-- `./clipshare`、`./clipshare --help`、`./clipshare --version`、`--no-tray` 的实际输出
-- `curl -s http://<host>:47100/v1/health` 的真实响应体
-- 托盘菜单与状态行、本地历史页 `http://127.0.0.1:<port>/ui` 的实际地址
