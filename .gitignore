@@ -1,0 +1,9 @@
+# build artifacts
+bin/
+clipshare
+clipshare.exe
+*.test
+
+# local configs
+config.json
+history.json
