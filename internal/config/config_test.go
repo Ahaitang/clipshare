@@ -355,3 +355,19 @@ func TestValidateAcceptsShortLegacyRoomKey(t *testing.T) {
 		}
 	}
 }
+
+// TestRandomIdentityNeverFallsBackToPredictableValues：随机源失败时不能退化成固定串。
+//
+// 曾经的兜底是 NewRoomKey 返回 "defaultroom"、newDeviceID 返回全零——两者都是
+// 可预测值，前者让所有机器共用一个 key（熵归零），后者让「排除自己/peer 去重」失效。
+// panic 分支无法在单测里稳定触发，这里守住「结果面上永远不会出现可预测 identity」。
+func TestRandomIdentityNeverFallsBackToPredictableValues(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		if key := NewRoomKey(); key == "defaultroom" || len(key) != roomKeyLen {
+			t.Fatalf("房间码退化成可预测值或长度异常: %q", key)
+		}
+		if id := newDeviceID(); id == "00000000000000000000000000000000" || len(id) != 32 {
+			t.Fatalf("DeviceID 退化成全零或长度异常: %q", id)
+		}
+	}
+}

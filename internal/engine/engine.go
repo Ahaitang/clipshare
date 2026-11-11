@@ -90,8 +90,17 @@ type Engine struct {
 	bcast   *sync.Broadcaster
 	poller  *clip.Poller
 
+	// cfgMu 保护 e.cfg 的可变字段（AutoApply / MDNS）以及它的序列化。
+	// tray 的每次点击都是独立 goroutine，两个开关同时点会一边改 cfg 一边 json.Marshal，
+	// 所以「改字段」和「落盘」必须在同一把锁里完成。
+	cfgMu stdsync.Mutex
+
 	finderMu stdsync.Mutex
 	finder   *discovery.Finder
+
+	// finderRebuildMu 串行化「停止旧 Finder + 启动新 Finder」，
+	// 避免并发 SetMDNS 交错执行时旧 Finder 的 goroutine/mDNS 连接泄漏。
+	finderRebuildMu stdsync.Mutex
 
 	wg stdsync.WaitGroup
 }
@@ -144,7 +153,11 @@ func configDirFor(cfg *config.Config) string {
 //
 // 端口被占用时返回带处置建议的错误（design §10）。
 func (e *Engine) Start() error {
-	if err := e.cfg.Validate(); err != nil {
+	// Validate 会读 AutoApply/MDNS，而托盘开关会并发写它们；这里与 saveConfigLocked 用同一把锁。
+	e.cfgMu.Lock()
+	err := e.cfg.Validate()
+	e.cfgMu.Unlock()
+	if err != nil {
 		return err
 	}
 	if e.board == nil {
@@ -291,6 +304,11 @@ func (e *Engine) PushCurrent() error {
 
 	entry := model.NewEntry(e.cfg.DeviceID, e.cfg.NodeName, content, time.Now())
 	e.store.Add(entry)
+	// 刚复制完就点「发送当前剪贴板」时，轮询器可能还没消费这次变化；
+	// 广播后把内容记为已见，紧接着的一轮轮询就不会再产生一次同 ID 广播（L1）。
+	if e.poller != nil {
+		e.poller.MarkSeen(content)
+	}
 	e.broadcast(entry)
 	return nil
 }
@@ -312,8 +330,12 @@ func (e *Engine) SetAutoApply(on bool) error {
 	e.mu.Lock()
 	e.autoApply = on
 	e.mu.Unlock()
+
+	e.cfgMu.Lock()
 	e.cfg.AutoApply = on
-	if err := e.saveConfig(); err != nil {
+	err := e.saveConfigLocked()
+	e.cfgMu.Unlock()
+	if err != nil {
 		return err
 	}
 	e.logf("[engine] 自动应用远端内容：%v", on)
@@ -325,8 +347,12 @@ func (e *Engine) SetMDNS(on bool) error {
 	e.mu.Lock()
 	e.mdns = on
 	e.mu.Unlock()
+
+	e.cfgMu.Lock()
 	e.cfg.MDNS = on
-	if err := e.saveConfig(); err != nil {
+	err := e.saveConfigLocked()
+	e.cfgMu.Unlock()
+	if err != nil {
 		return err
 	}
 
@@ -451,8 +477,13 @@ func (e *Engine) peerList() []sync.Peer {
 }
 
 // startFinder 按当前配置（重新）创建并启动发现器。
+//
+// 全程持有 finderRebuildMu：并发 SetMDNS 时重建会交错，若不串行化，
+// 后一次重建可能把前一次刚启动的 Finder 覆盖掉，旧 Finder 的 goroutine 与 mDNS 连接就泄漏了。
 func (e *Engine) startFinder() error {
-	e.stopFinder()
+	e.finderRebuildMu.Lock()
+	defer e.finderRebuildMu.Unlock()
+	e.stopFinderLocked()
 
 	if !e.isMDNS() && len(e.cfg.Seeds) == 0 {
 		return nil
@@ -479,8 +510,15 @@ func (e *Engine) startFinder() error {
 	return nil
 }
 
-// stopFinder 停掉并清空发现器。
+// stopFinder 停掉并清空发现器（与 startFinder 串行，避免重建交错）。
 func (e *Engine) stopFinder() {
+	e.finderRebuildMu.Lock()
+	defer e.finderRebuildMu.Unlock()
+	e.stopFinderLocked()
+}
+
+// stopFinderLocked 是 stopFinder 的实现体，调用方必须持有 finderRebuildMu。
+func (e *Engine) stopFinderLocked() {
 	e.finderMu.Lock()
 	f := e.finder
 	e.finder = nil
@@ -545,8 +583,12 @@ func (e *Engine) errText() string {
 	return e.lastErr
 }
 
-// saveConfig 把当前配置写回磁盘；配置目录不可用时返回错误但不影响运行。
-func (e *Engine) saveConfig() error {
+// saveConfigLocked 把当前配置写回磁盘；调用方必须持有 cfgMu。
+//
+// json.Marshal 会读取 Config 的每一个字段，因此它和「改字段」必须在同一把锁里，
+// 否则并发点两个托盘开关时会出现「落盘读到半个旧值」的数据竞争。
+// 配置目录不可用时返回错误但不影响运行。
+func (e *Engine) saveConfigLocked() error {
 	if e.cfgDir == "" {
 		return errors.New("配置目录不可用，改动未保存")
 	}

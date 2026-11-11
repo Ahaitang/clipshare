@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"log"
 	"strings"
 	"testing"
 
@@ -188,6 +189,38 @@ func TestLoadConfigInvalidFlagValues(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("错误信息 %q 未包含 %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestLogStartupPrintsFullRoomKey 是 t13 的回归保护：
+// 启动日志曾只打印房间码前 6 位，用户照着日志填到另一台机器必然 401。
+// 现在必须逐字符打完整值（旧 6 位 key 也照原样打）。
+func TestLogStartupPrintsFullRoomKey(t *testing.T) {
+	for _, key := range []string{"bgf3b69dg225", "abc123"} { // 12 位新 key / 6 位旧 key
+		t.Run(key, func(t *testing.T) {
+			var buf bytes.Buffer
+			oldOut, oldFlags := log.Writer(), log.Flags()
+			log.SetOutput(&buf)
+			log.SetFlags(0)
+			t.Cleanup(func() {
+				log.SetOutput(oldOut)
+				log.SetFlags(oldFlags)
+			})
+
+			cfg := config.Default()
+			cfg.RoomKey = key
+			logStartup(cfg, "/tmp/clipshare-test", "http://127.0.0.1:47101/ui", true)
+
+			out := buf.String()
+			// 整串出现，且后面紧跟分隔符——截断成前缀时这里匹配不上。
+			if want := "房间码: " + key + " ——"; !strings.Contains(out, want) {
+				t.Fatalf("启动日志没有完整房间码 %q，实际日志:\n%s", key, out)
+			}
+			// 首启还应给出配置文件路径，方便用户去复制完整 key。
+			if !strings.Contains(out, "首次启动：已生成配置 /tmp/clipshare-test/config.json") {
+				t.Fatalf("首次启动日志缺少配置路径:\n%s", out)
 			}
 		})
 	}

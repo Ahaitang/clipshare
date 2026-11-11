@@ -183,16 +183,7 @@ func serve(opts *options) error {
 		defer closeUI()
 	}
 
-	log.Printf("clipshare %s 已启动：节点 %q，端口 %d，房间 %s", version, cfg.NodeName, cfg.Port, model.RoomHash(cfg.RoomKey))
-	log.Printf("配置文件: %s", config.Path(dir))
-	if uiURL != "" {
-		log.Printf("本地历史页: %s", uiURL)
-	}
-	// 多机连通失败的头号原因是房间码没对齐，所以每次启动都打出来。
-	log.Printf("房间码: %s —— 其他机器填同一个 roomKey 才能互通", shortRoomKey(cfg.RoomKey))
-	if firstRun {
-		log.Printf("首次启动：已生成配置 %s；把各台机器的 roomKey 改成同一个值，再分别启动", config.Path(dir))
-	}
+	logStartup(cfg, dir, uiURL, firstRun)
 
 	return serveUntilExit(eng, cfg, dir, uiURL)
 }
@@ -352,12 +343,22 @@ func runTray(eng *engine.Engine, cfgDir, uiURL string) (ok bool) {
 	return true
 }
 
-// shortRoomKey 取房间码前 6 位用于日志（默认房间码本身就是 6 位）。
-func shortRoomKey(key string) string {
-	if len(key) <= 6 {
-		return key
+// logStartup 打印启动信息。
+//
+// 房间码打**完整值**：用户要把它整串复制到另一台机器，只打前缀会让人照着前缀填，
+// 结果对端 401（v0.1.0 的回归就是这么来的）。日志里出现完整密钥当然有代价，
+// 所以文案里带一句「贴日志求助前请先打码」，README 的安全边界也写了同一句。
+func logStartup(cfg *config.Config, cfgDir, uiURL string, firstRun bool) {
+	log.Printf("clipshare %s 已启动：节点 %q，端口 %d，房间 %s", version, cfg.NodeName, cfg.Port, model.RoomHash(cfg.RoomKey))
+	log.Printf("配置文件: %s", config.Path(cfgDir))
+	if uiURL != "" {
+		log.Printf("本地历史页: %s", uiURL)
 	}
-	return key[:6]
+	// 多机连通失败的头号原因是房间码没对齐，所以每次启动都打出来。
+	log.Printf("房间码: %s —— 其他机器填同一个 roomKey 才能互通（贴日志求助前请先打码）", cfg.RoomKey)
+	if firstRun {
+		log.Printf("首次启动：已生成配置 %s；把各台机器的 roomKey 改成同一个值，再分别启动", config.Path(cfgDir))
+	}
 }
 
 func fileExists(path string) bool {

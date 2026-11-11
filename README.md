@@ -61,7 +61,7 @@ make build-windows    # → bin/clipshare.exe（可在任一台机器上交叉�
 
 **第三步：对齐房间码** —— 把每台机器 `config.json` 里的 `roomKey` 改成**同一个值**（两台、三台或更多都一样）。
 
-> 12 位房间码不是用来背的：多机之间请**直接复制粘贴整串**，不要口述或手抄（启动日志只打印前 6 位用于识别，不是完整房间码）。`roomKey` 只是进房间的凭据，不参与内容加密。
+> 12 位房间码不是用来背的：多机之间请**直接复制粘贴整串**，不要口述或手抄。启动日志会打印**完整**房间码，可直接整串复制到另一台机器（贴日志求助前请先打码，见「安全边界」）。`roomKey` 只是进房间的凭据，不参与内容加密。
 
 **第四步：重启全部进程** —— 同一局域网内通过 mDNS（服务类型 `_clipshare._tcp`）自动互相发现。
 
@@ -83,16 +83,16 @@ $ ./bin/clipshare --version
 clipshare 0.1.0
 
 $ ./bin/clipshare --no-tray --port 47999 --config-dir /tmp/clipshare-demo
-2026/11/11 20:14:08 [engine] 启动完成：节点 haitang（14e6b3），端口 47999，房间 ffbfe1abeeb8
-2026/11/11 20:14:08 clipshare 0.1.0 已启动：节点 "haitang"，端口 47999，房间 ffbfe1abeeb8
-2026/11/11 20:14:08 配置文件: /tmp/clipshare-demo/config.json
-2026/11/11 20:14:08 本地历史页: http://127.0.0.1:48000/ui
-2026/11/11 20:14:08 房间码: kmaads —— 其他机器填同一个 roomKey 才能互通
-2026/11/11 20:14:08 首次启动：已生成配置 /tmp/clipshare-demo/config.json；把各台机器的 roomKey 改成同一个值，再分别启动
-2026/11/11 20:14:08 已禁用托盘（--no-tray）：本地历史页 http://127.0.0.1:48000/ui，Ctrl+C 退出
+2026/11/11 20:18:34 [engine] 启动完成：节点 haitang（e0a195），端口 47999，房间 a98508acc9a9
+2026/11/11 20:18:34 clipshare 0.1.0 已启动：节点 "haitang"，端口 47999，房间 a98508acc9a9
+2026/11/11 20:18:34 配置文件: /tmp/clipshare-demo/config.json
+2026/11/11 20:18:34 本地历史页: http://127.0.0.1:48000/ui
+2026/11/11 20:18:34 房间码: gjhbh8u6chsw —— 其他机器填同一个 roomKey 才能互通（贴日志求助前请先打码）
+2026/11/11 20:18:34 首次启动：已生成配置 /tmp/clipshare-demo/config.json；把各台机器的 roomKey 改成同一个值，再分别启动
+2026/11/11 20:18:34 已禁用托盘（--no-tray）：本地历史页 http://127.0.0.1:48000/ui，Ctrl+C 退出
 
 $ curl -s http://127.0.0.1:47999/v1/health
-{"nodeId":"14e6b3a1a334ff8f392890824da5005d","name":"haitang","version":"0.1.0","roomHash":"ffbfe1abeeb8"}
+{"nodeId":"e0a195c5380b67353bf616be66d62633","name":"haitang","version":"0.1.0","roomHash":"a98508acc9a9"}
 
 $ curl -s -o /dev/null -w 'HTTP %{http_code}, %{content_type}, %{size_download} bytes\n' http://127.0.0.1:48000/ui
 HTTP 200, text/html; charset=utf-8, 9897 bytes
@@ -126,6 +126,7 @@ v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都
 - **同房间内任何人，既能读取这条同步流，也能直接往你的剪贴板写内容**——`/v1/items` 收到即写入历史，`autoApply` 打开时还会写进本机剪贴板。
 - **房间密钥只解决「谁能接入」**，不提供保密性，也不防重放。
 - **房间码是唯一凭证，长度必须够**：`/v1/health` 与 mDNS TXT 都会公开 `sha256(roomKey)` 的前 12 位（48 bit）。拿到这个 hash 就能**离线枚举**候选 key 并用它验证——**6 位房间码只有 31^6 ≈ 8.9×10^8 ≈ 29.7 bit，单核分钟级即可爆破**，等于把整个房间（读剪贴板流 + 往你剪贴板写内容）交出去。当前版本首启生成 **12 位（31^12 ≈ 59.5 bit）**；旧的 6 位配置仍可用，但请改成 12 位以上，且多机对齐时从 `config.json` **复制粘贴**，不要口述/手抄。
+- **启动日志会打印完整房间码**（方便直接复制到另一台机器）：贴日志、截图或提 issue 前请先把房间码打码，否则等于把房间凭证公开。
 - `/v1/health` **免鉴权**：同网段的人可以探测某个房间 hash 是否存在（但不会泄露 `roomKey` 本身）。
 - **历史默认明文落盘**（`history.json`，权限 0600）：不想落盘就 `"persist": false` 或加 `--no-persist`（内存历史仍可用）。
 - **Web UI 只绑 `127.0.0.1`、不做鉴权**：能访问本机这个端口的人就能读历史、写剪贴板。
@@ -258,20 +259,21 @@ bin/clipshare.exe: PE32+ executable (console) x86-64, for MS Windows
 ```console
 $ printf 't5-accept-%s' "$(date +%s)" | xsel --clipboard --input   # 模拟用户复制
 $ curl -s http://127.0.0.1:48000/ui/api/entries
-[{"id":"6a1118973fefbd90","origin":"14e6b3a1a334ff8f392890824da5005d","originName":"haitang","content":"t5-accept-1794399249","recvAt":"2026-11-11T20:14:09.860786698+08:00"}]
+[{"id":"7df77ffe3f748c06","origin":"e0a195c5380b67353bf616be66d62633","originName":"haitang","content":"t5-accept-1794399516","recvAt":"2026-11-11T20:18:36.398623633+08:00"}]
 
 $ kill -TERM <pid>          # exit=0；日志末两行：
 收到信号 terminated，开始退出…
 [engine] 已停止
 
 $ cat /tmp/clipshare-demo/history.json
-[{"id":"6a1118973fefbd90","origin":"14e6b3a1a334ff8f392890824da5005d","originName":"haitang","content":"t5-accept-1794399249","recvAt":"2026-11-11T20:14:09.860786698+08:00"}]
+[{"id":"7df77ffe3f748c06","origin":"e0a195c5380b67353bf616be66d62633","originName":"haitang","content":"t5-accept-1794399516","recvAt":"2026-11-11T20:18:36.398623633+08:00"}]
 ```
 
 - `/v1/health` 的 `version` 与 `--version` 都是 `0.1.0`（同一个注入值，已核对）。
 - SIGTERM 后历史已落盘（`history.json` 里是真实剪贴板条目）。
 - 端口冲突时报 `clipshare: 端口 47999 无法监听（可能已被占用），用 --port 或配置里的 port 换一个: listen tcp :47999: bind: address already in use`，退出码 1。
-- 首启生成的 `roomKey` 实测 12 位（本次为 `kmaadspwgunz`），`/v1/health` 的 `roomHash` = `sha256(roomKey)` 前 12 位（`ffbfe1abeeb8`，已按 config.json 里的 key 独立复算核对）；启动日志只打印前 6 位（`kmaads`）用于识别，完整房间码请看配置文件。
+- 首启生成的 `roomKey` 实测 12 位（本次为 `gjhbh8u6chsw`），启动日志打印的是**完整值**（已用脚本把日志行与 `config.json` 逐字符比对，一致）；`/v1/health` 的 `roomHash` = `sha256(roomKey)` 前 12 位（`a98508acc9a9`，已独立复算核对）。
+- 用日志里的完整 key 直接加入另一实例（`--room <日志里的 key>`）时两边 `roomHash` 相同；对 `/v1/items` 用**完整 key** 请求得 `202`，用旧 bug 的**前 6 位**请求得 `401`（已验证，说明「日志只打前缀」确实会让人配不上）。
 - flag 只对本次运行生效：以 `--room flagroom --port 47996 --mdns=false` 启动时 `/v1/health` 的 `roomHash` = `c16ecc5336ee`（= `sha256("flagroom")` 前 12 位），而 `config.json` 里仍是随机 12 位 `roomKey`（`g6gxne5cqjhd`）、`port: 47100`、`mdns: true`。
 - 剪贴板命令缺失时的退出路径（`PATH=/nonexistent` 实测）：`clipshare: 缺少剪贴板命令 xclip/xsel：请安装其一，例如 sudo apt install xclip（或 sudo apt install xsel）`，退出码 1，不会静默空转。
 - 托盘模式（不带 `--no-tray`）在本机能启动、SIGTERM 退出码 0；**图标是否真显示在面板上需人眼验收**。

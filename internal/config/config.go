@@ -283,7 +283,10 @@ func (c *Config) RoomHashValue() string { return model.RoomHash(c.RoomKey) }
 func NewRoomKey() string {
 	buf := make([]byte, roomKeyLen)
 	if _, err := rand.Read(buf); err != nil {
-		return "defaultroom"
+		// 绝不能退化成固定串（曾返回 "defaultroom"）：那等于所有机器共用一个
+		// 可预测密钥，熵直接归零，比「key 太短」严重得多。Go 1.24 起
+		// crypto/rand.Read 失败本身就会 panic，这里显式 panic 只为把意图写死。
+		panic("clipshare: 无法获取安全随机数，拒绝生成可预测的房间码")
 	}
 	out := make([]byte, roomKeyLen)
 	for i, b := range buf {
@@ -295,7 +298,8 @@ func NewRoomKey() string {
 func newDeviceID() string {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
-		return "00000000000000000000000000000000"
+		// 与 NewRoomKey 同理：全零 DeviceID 会让「排除自己」与 peer 去重全部失效。
+		panic("clipshare: 无法获取安全随机数，拒绝生成可预测的设备 ID")
 	}
 	return hex.EncodeToString(buf)
 }

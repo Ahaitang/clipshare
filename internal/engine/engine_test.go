@@ -22,12 +22,21 @@ type fakeClip struct {
 	mu      stdsync.Mutex
 	content string
 	writes  int
+	reads   int
 }
 
 func (c *fakeClip) Read() (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.reads++
 	return c.content, nil
+}
+
+// readCount 返回 Read 被调用次数，供测试观察轮询周期相位。
+func (c *fakeClip) readCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.reads
 }
 
 func (c *fakeClip) Write(s string) error {
@@ -472,4 +481,139 @@ func readIfExists(t *testing.T, path string) ([]byte, bool) {
 		t.Fatalf("读 %s: %v", path, err)
 	}
 	return raw, true
+}
+
+// TestConcurrentConfigToggles 复现托盘并发点两个开关的场景：
+// tray 每次点击都是 go func()，用户快速点「自动应用」和「mDNS」时，
+// SetAutoApply / SetMDNS 会并发修改共享的 cfg，而 saveConfig 正在 json.Marshal 它。
+func TestConcurrentConfigToggles(t *testing.T) {
+	cfg := testConfig("devA", "A", freePort(t), "room-key-123")
+	h := newHarness(t, cfg)
+
+	var wg stdsync.WaitGroup
+	start := make(chan struct{})
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		for i := 0; i < 100; i++ {
+			if err := h.e.SetAutoApply(i%2 == 0); err != nil {
+				t.Errorf("SetAutoApply: %v", err)
+				return
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		for i := 0; i < 100; i++ {
+			if err := h.e.SetMDNS(i%2 == 0); err != nil {
+				t.Errorf("SetMDNS: %v", err)
+				return
+			}
+		}
+	}()
+	close(start)
+	wg.Wait()
+
+	// 最后一个写入值必须完整落盘（不能是并发写坏的中间态）。
+	raw, ok := readIfExists(t, config.Path(cfg.Dir))
+	if !ok {
+		t.Fatal("并发开关后配置应已落盘")
+	}
+	var saved config.Config
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		t.Fatalf("并发写回的配置不是合法 JSON: %v\n%s", err, raw)
+	}
+	if saved.AutoApply != h.e.Snapshot().AutoApply || saved.MDNS != h.e.Snapshot().MDNS {
+		t.Fatalf("落盘值与内存状态不一致: 落盘 autoApply=%v mdns=%v，内存 %+v",
+			saved.AutoApply, saved.MDNS, h.e.Snapshot())
+	}
+}
+
+// L1：刚复制完就点「发送当前剪贴板」时，轮询器可能还没消费这次变化。
+// PushCurrent 广播后必须把内容记为已见，否则紧接着的一轮轮询会再广播一次同 ID 条目。
+func TestPushCurrentSuppressesPendingPoll(t *testing.T) {
+	cfg := testConfig("devA", "A", freePort(t), "room-key-123")
+	h := newHarness(t, cfg)
+	h.start(t) // 基线已建立，且没有 peer（广播退化为记日志，便于计数）
+
+	// 等到「刚完成一轮轮询」的时刻再动手：此时离下一次轮询还有一整个周期，
+	// 复制与 PushCurrent 都不会与轮询交错，避免测试偶发（轮询半路检测到变化属正常 S1）。
+	interval := 3 * time.Duration(cfg.PollIntervalMs) * time.Millisecond
+	reads := h.clip.readCount()
+	waitFor(t, "轮询器完成一轮读取", func() bool { return h.clip.readCount() > reads })
+
+	h.clip.set("刚复制就推送")
+	if err := h.e.PushCurrent(); err != nil {
+		t.Fatalf("PushCurrent: %v", err)
+	}
+	after := h.logs.count("广播条目")
+	if after != 1 {
+		t.Fatalf("PushCurrent 应恰好广播一次，得到 %d 次\n日志:\n%s", after, h.logs.dump())
+	}
+
+	// 跨过至少两个轮询周期：若 PushCurrent 没把内容记为已见，
+	// 下一轮轮询会发现「剪贴板变了」并再广播一次同 ID 条目。
+	waitIdle(2 * interval)
+	if n := h.logs.count("广播条目"); n != after {
+		t.Fatalf("PushCurrent 后不应再因轮询重复广播，广播次数 %d → %d\n日志:\n%s",
+			after, n, h.logs.dump())
+	}
+	if got := len(h.e.ListEntries()); got != 1 {
+		t.Fatalf("同一条内容只应入历史一次，得到 %d 条", got)
+	}
+}
+
+// 并发 SetMDNS 时必须串行化 Finder 重建：不能交错到「旧 Finder 还没停就被覆盖」。
+// 这里用 seeds（而不是真 mDNS）驱动重建，避免依赖多播环境；断言不 panic、不死锁、
+// 最终状态与最后一次调用一致，且 Stop 能干净收尾。
+func TestConcurrentSetMDNSRebuildSerialized(t *testing.T) {
+	cfg := testConfig("devA", "A", freePort(t), "room-key-123")
+	cfg.MDNS = false
+	cfg.Seeds = []string{fmt.Sprintf("127.0.0.1:%d", freePort(t))} // 无对端，探测快速失败
+
+	h := newHarness(t, cfg)
+	h.start(t)
+
+	var wg stdsync.WaitGroup
+	start := make(chan struct{})
+	for w := 0; w < 2; w++ {
+		w := w
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for i := 0; i < 8; i++ {
+				on := (i+w)%2 == 0
+				if err := h.e.SetMDNS(on); err != nil {
+					t.Errorf("SetMDNS(%v): %v", on, err)
+					return
+				}
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	// 收敛到确定的终态：seeds 仍在，因此 Finder 必须存在且是最后一个。
+	if err := h.e.SetMDNS(false); err != nil {
+		t.Fatalf("收尾 SetMDNS(false): %v", err)
+	}
+	waitFor(t, "重建后 Finder 仍存在（seeds 非空）", func() bool {
+		h.e.finderMu.Lock()
+		defer h.e.finderMu.Unlock()
+		return h.e.finder != nil
+	})
+	if snap := h.e.Snapshot(); snap.MDNS {
+		t.Fatalf("终态 mDNS 应为 false，得到 %+v", snap)
+	}
+
+	done := make(chan struct{})
+	go func() { h.e.Stop(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("并发重建后 Stop 卡住（Finder 泄漏或死锁）")
+	}
 }
