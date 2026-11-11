@@ -1,7 +1,8 @@
 # build artifacts
-bin/
-clipshare
-clipshare.exe
+# 只忽略仓库根目录的构建产物，不要写成裸名字——裸 clipshare 会连 cmd/clipshare/ 一起吞掉
+/bin/
+/clipshare
+/clipshare.exe
 *.test
 
 # local configs
