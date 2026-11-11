@@ -36,15 +36,23 @@ import (
 )
 
 const (
-	// Version 是协议握手与 /v1/health 上报的版本号。
-	Version = "0.1.0"
-
 	// SnapshotRecent 是状态快照里携带的最近条目数（托盘菜单直接渲染这些）。
 	SnapshotRecent = 10
 
 	// shutdownTimeout 是 Stop 时等待 HTTP 连接收尾的上限。
 	shutdownTimeout = 3 * time.Second
 )
+
+// Version 是协议握手与 /v1/health 上报的版本号。
+//
+// 必须是变量而不是常量：main 用 ldflags 注入真实版本（-X main.version=...）后，
+// 会在调用 Start 之前用同一份值覆盖这里，保证 `clipshare --version` 打印的版本
+// 与两台机器互相上报的版本永远一致。
+//
+// 默认值 0.1.0 只是独立运行 engine 包（单测、未注入版本的裸 go run）时的兜底。
+// 唯一读取点是 Start 里的 sync.ServerConfig.Version（以及 discovery 的 Version 字段），
+// 不要在别处再硬编码版本号。
+var Version = "0.1.0"
 
 // 对外可判定的错误（界面层可以直接展示 Error() 文本）。
 var (

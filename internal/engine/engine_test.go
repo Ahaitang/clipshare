@@ -1,9 +1,11 @@
 package engine
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"strings"
 	stdsync "sync"
 	"testing"
@@ -350,5 +352,45 @@ func TestPullEntryUnknownID(t *testing.T) {
 	h.start(t)
 	if err := h.e.PullEntry("nope"); err == nil {
 		t.Fatal("未知 id 取回必须报错")
+	}
+}
+
+// Version 必须是可注入的：main 用 ldflags 注入的版本覆盖它之后，
+// /v1/health 上报的版本要跟着变（否则 --version 与对端看到的版本会不一致）。
+func TestVersionInjectionReportedByHealth(t *testing.T) {
+	old := Version
+	Version = "9.9.9-test"
+	t.Cleanup(func() { Version = old })
+
+	cfg := testConfig("devA", "A", freePort(t), "room-key-123")
+	h := newHarness(t, cfg)
+	h.start(t)
+
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/v1/health", cfg.Port))
+	if err != nil {
+		t.Fatalf("请求 /v1/health 失败: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("/v1/health 应返回 200，得到 %d", resp.StatusCode)
+	}
+
+	var got struct {
+		NodeID   string `json:"nodeId"`
+		Name     string `json:"name"`
+		Version  string `json:"version"`
+		RoomHash string `json:"roomHash"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("解析 /v1/health 响应失败: %v", err)
+	}
+	if got.Version != "9.9.9-test" {
+		t.Fatalf("/v1/health 上报版本应为注入值 9.9.9-test，得到 %q", got.Version)
+	}
+	if got.NodeID != "devA" || got.Name != "A" {
+		t.Fatalf("health 节点信息异常: %+v", got)
+	}
+	if got.RoomHash != model.RoomHash("room-key-123") {
+		t.Fatalf("health roomHash 异常: %q", got.RoomHash)
 	}
 }
