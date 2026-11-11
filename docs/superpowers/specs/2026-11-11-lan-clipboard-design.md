@@ -98,7 +98,7 @@ type Entry struct {
 type Config struct {
     NodeName      string   `json:"nodeName"`      // 默认 os.Hostname()
     DeviceID      string   `json:"deviceId"`      // 首次启动 crypto/rand 生成
-    RoomKey       string   `json:"roomKey"`       // 房间密钥；空则首启生成 6 位
+    RoomKey       string   `json:"roomKey"`       // 房间密钥；空则首启生成 12 位（熵的取舍见 §6）
     Port          int      `json:"port"`          // 默认 47100
     Seeds         []string `json:"seeds"`         // ["192.168.1.7:47100"]
     HistoryLimit  int      `json:"historyLimit"`  // 默认 500
@@ -174,6 +174,21 @@ CLI flag 与配置文件同时支持，**flag 优先级更高**（`--room`、`--
 
 默认监听 `0.0.0.0:47100`；单次 POST 超时 3s；广播采用「每 peer 一个 goroutine + WaitGroup」，任一 peer 失败不影响其他。
 
+### 房间码熵与公开 hash（有意的取舍，已知边界）
+
+`roomHash = sha256(roomKey)` 的前 12 位 hex，共 48 bit，**是公开的**：`GET /v1/health` 免鉴权返回它，mDNS TXT 里也带同一个值（否则静态 seeds 与订阅端无法在「不泄露 roomKey」的前提下判断是否同房间）。
+
+这带来一个必须算清的边界：攻击者拿到公开 hash 后，可以**离线**枚举候选 key 并用这 48 bit 前缀验证，不需要任何在线交互。
+
+| 房间码长度 | 枚举空间 | 熵 | 面对 48 bit 公开 hash 的结论 |
+|---|---|---|---|
+| 6 位 | 31^6 ≈ 8.9×10^8 | ≈ 29.7 bit | 空间 ≪ 2^48，单核分钟级、GPU 秒级即可唯一命中 → 等同于泄露 key |
+| 12 位（v1 默认） | 31^12 ≈ 7.9×10^17 | ≈ 59.5 bit | 空间 > 2^48 且更大，离线爆破不可行 |
+
+命中 key 即等于拿到 `Authorization: Bearer <roomKey>`：可读全组剪贴板流，也可向每个人的剪贴板写入内容。因此 v1 首启生成 12 位；`Validate` 不设长度下限（已部署的 6 位 key 继续可用，避免升级即断连），文档里建议用户换长。
+
+若未来要把这个取舍彻底去掉，路径是把 `roomHash` 换成带随机 salt 的 HMAC（salt 只经 mDNS/配置传递）或直接上 TLS/PAKE（见 §13 的 v2 方向）。
+
 ### 安全边界（写进 README，不做代码防护）
 
 - 组内任何人只要拿到 roomKey 即可读取同步流，也可以向他人的剪贴板写入内容。
@@ -208,7 +223,7 @@ type Clipboard interface {
 ### 托盘菜单
 
 ```
-clipshare · <nodeName>          (禁用标题，房间码前 6 位)
+clipshare · <nodeName>          (禁用标题，roomHash 前 6 位)
 与 3 台同步中 / 已暂停 / 无可用节点   (禁用状态行)
 ──────────
 [本机] 前 40 字…                 ← 点击 = 取回本机剪贴板（S3）

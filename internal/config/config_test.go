@@ -293,3 +293,65 @@ func TestDirNotPersisted(t *testing.T) {
 		t.Fatalf("配置 JSON 不应包含 Dir 字段，实际内容:\n%s", raw)
 	}
 }
+
+// TestNewRoomKeyLength 钉住房间码长度 = 12。
+//
+// 算术：房间码字母表 31 个字符。
+//   - 6 位 → 31^6 ≈ 8.9×10^8 ≈ 29.7 bit
+//   - 12 位 → 31^12 ≈ 7.9×10^17 ≈ 59.5 bit
+//
+// 而 roomHash = sha256(roomKey) 前 12 位 hex（48 bit）是公开的（/v1/health 免鉴权、
+// mDNS TXT 也带），所以攻击者可以离线枚举候选 key 并用 hash 前缀验证：
+// 6 位时枚举空间远小于 2^48，几分钟就能唯一命中；12 位才明显大于验证空间。
+func TestNewRoomKeyLength(t *testing.T) {
+	if roomKeyLen != 12 {
+		t.Fatalf("roomKeyLen = %d，期望 12（31^12 ≈ 59.5 bit；6 位只有 ≈29.7 bit，hash 公开时可被离线爆破）", roomKeyLen)
+	}
+	for i := 0; i < 100; i++ {
+		key := NewRoomKey()
+		if len(key) != roomKeyLen {
+			t.Fatalf("NewRoomKey() = %q，长度 %d，期望 %d", key, len(key), roomKeyLen)
+		}
+	}
+}
+
+// TestNewRoomKeyAlphabet：房间码只由去混淆字母表组成（方便手抄，不含 0/O/1/l/i）。
+func TestNewRoomKeyAlphabet(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		key := NewRoomKey()
+		for _, r := range key {
+			if !strings.ContainsRune(roomKeyAlphabet, r) {
+				t.Fatalf("房间码 %q 含字母表外字符 %q（字母表 %q）", key, r, roomKeyAlphabet)
+			}
+		}
+	}
+}
+
+// TestNewRoomKeyUnique：批量生成不应出现重复（12 位空间下 2000 个样本重复概率可忽略，
+// 这条主要防「随机源用错/只填了部分字节」这类实现退化）。
+func TestNewRoomKeyUnique(t *testing.T) {
+	const n = 2000
+	seen := make(map[string]struct{}, n)
+	for i := 0; i < n; i++ {
+		key := NewRoomKey()
+		if _, dup := seen[key]; dup {
+			t.Fatalf("第 %d 次生成出现重复房间码 %q", i, key)
+		}
+		seen[key] = struct{}{}
+	}
+	if len(seen) != n {
+		t.Fatalf("去重后只有 %d 个，期望 %d", len(seen), n)
+	}
+}
+
+// TestValidateAcceptsShortLegacyRoomKey：向后兼容——Validate 不设长度下限，
+// 已部署的 6 位房间码必须继续能用（只在文档里建议换长）。
+func TestValidateAcceptsShortLegacyRoomKey(t *testing.T) {
+	for _, key := range []string{"abc123", "abcdefghjkmn", NewRoomKey()} {
+		cfg := *Default()
+		cfg.RoomKey = key
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("roomKey=%q 应通过校验（不设长度下限）: %v", key, err)
+		}
+	}
+}

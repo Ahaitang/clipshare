@@ -21,10 +21,17 @@ const (
 	DefaultItemMaxBytes   = 262144
 	DefaultPollIntervalMs = 400
 	// roomKeyLen 是首启自动生成的房间码长度。
-	roomKeyLen = 6
+	//
+	// 为什么是 12 而不是看起来够用的 6：房间码的 sha256 前 12 位 hex（48 bit）
+	// 经 GET /v1/health（免鉴权）与 mDNS TXT 公开，短 key 可被离线枚举爆破。
+	// 31 字符字母表下 6 位只有 31^6 ≈ 8.9×10^8 ≈ 29.7 bit，12 位有
+	// 31^12 ≈ 7.9×10^17 ≈ 59.5 bit。完整论证见 NewRoomKey 的注释与
+	// README「安全边界」、design §6「房间码熵与公开 hash」。
+	roomKeyLen = 12
 )
 
-// roomKeyAlphabet 去掉了易混淆字符（0/O、1/l/i），方便口头或手抄。
+// roomKeyAlphabet 去掉了易混淆字符（0/O、1/l/i），降低手抄/截图 OCR 出错率。
+// 不过 12 位房间码不是给人背的：多机对齐请从 config.json 复制粘贴（见 README 安全边界）。
 const roomKeyAlphabet = "abcdefghjkmnpqrstuvwxyz23456789"
 
 // Config 是运行期配置。所有字段都会被写回文件，不存在「缺省即省略」的情况。
@@ -257,6 +264,22 @@ func BaseURL(seed string) string {
 func (c *Config) RoomHashValue() string { return model.RoomHash(c.RoomKey) }
 
 // NewRoomKey 生成随机房间码。
+//
+// 长度固定为 roomKeyLen = 12。字母表 31 个字符 ⇒ 31^12 ≈ 7.9×10^17 ≈ **59.5 bit** 熵。
+//
+// 为什么必须够长（不要改回 6 位，这是踩过的坑）：
+//   - roomHash = sha256(roomKey) 的前 12 位 hex（48 bit）是**公开**的：
+//     GET /v1/health 免鉴权就返回它，mDNS TXT 记录里也带同一个值；
+//   - 攻击者拿到 hash 后可以**离线**枚举候选 key，用这 48 bit 前缀验证，
+//     完全不需要任何在线交互；
+//   - 6 位 = 31^6 ≈ 8.9×10^8 ≈ 29.7 bit，远小于 2^48 的验证空间，
+//     单核 CPU 分钟级、GPU 秒级就能唯一命中；
+//   - 命中 key 就等于拿到 `Authorization: Bearer <roomKey>`：能读全组剪贴板流，
+//     也能向每个人的剪贴板写入任意内容。
+//
+// 12 位的 59.5 bit 既大于 48 bit 验证空间、空间本身也更大，离线爆破不可行。
+// 向后兼容：Validate 不设长度下限，已部署的 6 位 key 继续可用（仅弱），
+// 文档里建议用户自行换长。
 func NewRoomKey() string {
 	buf := make([]byte, roomKeyLen)
 	if _, err := rand.Read(buf); err != nil {
