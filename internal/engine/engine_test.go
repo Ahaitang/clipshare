@@ -6,15 +6,18 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	stdsync "sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"clipshare/internal/config"
 	"clipshare/internal/history"
 	"clipshare/internal/model"
+	"clipshare/internal/sync"
 )
 
 // fakeClip 是并发安全的假剪贴板：测试直接 set/get 内容，模拟用户复制。
@@ -127,6 +130,7 @@ type harness struct {
 	clip *fakeClip
 	cfg  *config.Config
 	logs *logBuf
+	t    *testing.T
 }
 
 // newHarness 造一台不落盘、不碰用户配置目录的引擎。
@@ -143,7 +147,7 @@ func newHarness(t *testing.T, cfg *config.Config) *harness {
 	logs := &logBuf{}
 	e := New(cfg, store, fc, logs.logf)
 	t.Cleanup(e.Stop)
-	return &harness{e: e, clip: fc, cfg: cfg, logs: logs}
+	return &harness{e: e, clip: fc, cfg: cfg, logs: logs, t: t}
 }
 
 // start 启动引擎，并等轮询器建立基线：Poller 启动首轮读到的内容不算「用户复制」，
@@ -615,5 +619,152 @@ func TestConcurrentSetMDNSRebuildSerialized(t *testing.T) {
 	case <-done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("并发重建后 Stop 卡住（Finder 泄漏或死锁）")
+	}
+}
+
+// usePeers 用假 peer 列表替换广播器（不依赖 discovery 与真实网络）。
+func (h *harness) usePeers(peers ...sync.Peer) {
+	h.t.Helper()
+	b := sync.NewBroadcaster(&sync.Client{Timeout: 500 * time.Millisecond}, func() []sync.Peer {
+		out := make([]sync.Peer, len(peers))
+		copy(out, peers)
+		return out
+	})
+	b.SetRoomKey(h.cfg.RoomKey)
+	h.e.bcast = b
+}
+
+// 连接层持续失败：未达阈值不提示，达阈值提示一次并带上真实端口，节流窗口内不重复。
+func TestBroadcastConnectivityWarning(t *testing.T) {
+	cfg := testConfig("devA", "A", freePort(t), "room-key-123")
+	h := newHarness(t, cfg)
+	h.t = t
+
+	deadPort := freePort(t) // 没人监听，连接会立刻被拒
+	addr := fmt.Sprintf("127.0.0.1:%d", deadPort)
+	h.usePeers(sync.Peer{NodeID: "win1", Name: "WIN10", BaseURL: "http://" + addr})
+
+	clock := time.Unix(1700000000, 0)
+	h.e.now = func() time.Time { return clock }
+
+	entry := model.NewEntry("devA", "A", "触发广播", time.Now())
+	for i := 1; i < broadcastWarnThreshold; i++ {
+		h.e.broadcast(entry)
+	}
+	if n := h.logs.count("New-NetFirewallRule"); n != 0 {
+		t.Fatalf("未达阈值（%d 轮）不应提示防火墙，实际 %d 条\n日志:\n%s", broadcastWarnThreshold-1, n, h.logs.dump())
+	}
+
+	h.e.broadcast(entry) // 第 3 轮
+	if n := h.logs.count("New-NetFirewallRule"); n != 1 {
+		t.Fatalf("连续 %d 轮全部失败后应提示一次防火墙，实际 %d 条\n日志:\n%s",
+			broadcastWarnThreshold, n, h.logs.dump())
+	}
+	if n := h.logs.count(addr); n == 0 {
+		t.Fatalf("提示里应包含该 peer 的真实地址 %q\n日志:\n%s", addr, h.logs.dump())
+	}
+	if n := h.logs.count(fmt.Sprintf("-LocalPort %d", deadPort)); n == 0 {
+		t.Fatalf("提示里应包含该 peer 的真实端口 %d\n日志:\n%s", deadPort, h.logs.dump())
+	}
+
+	// 节流窗口内继续失败：不重复提示。
+	h.e.broadcast(entry)
+	if n := h.logs.count("New-NetFirewallRule"); n != 1 {
+		t.Fatalf("节流窗口内不应重复提示，实际 %d 条\n日志:\n%s", n, h.logs.dump())
+	}
+
+	// 过了窗口再次失败：可以再提示一次。
+	clock = clock.Add(broadcastWarnInterval + time.Second)
+	h.e.broadcast(entry)
+	if n := h.logs.count("New-NetFirewallRule"); n != 2 {
+		t.Fatalf("节流窗口过后应再次提示，实际 %d 条\n日志:\n%s", n, h.logs.dump())
+	}
+}
+
+// 对端可达但返回 401：提示应是「房间码不一致」，不能混成防火墙问题。
+func TestBroadcastAuthWarningIsDifferentFromFirewall(t *testing.T) {
+	cfg := testConfig("devA", "A", freePort(t), "room-key-123")
+	h := newHarness(t, cfg)
+	h.t = t
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	h.usePeers(sync.Peer{NodeID: "roomy", Name: "OTHER-ROOM", BaseURL: srv.URL})
+	entry := model.NewEntry("devA", "A", "触发广播", time.Now())
+	for i := 0; i < broadcastWarnThreshold; i++ {
+		h.e.broadcast(entry)
+	}
+
+	if n := h.logs.count("房间码"); n != 1 {
+		t.Fatalf("401 持续失败应提示房间码不一致一次，实际 %d 条\n日志:\n%s", n, h.logs.dump())
+	}
+	if n := h.logs.count("New-NetFirewallRule"); n != 0 {
+		t.Fatalf("鉴权失败不能提示防火墙，实际 %d 条\n日志:\n%s", n, h.logs.dump())
+	}
+}
+
+// 只要有一轮成功，连续失败计数必须清零（不要在下一次偶发失败时借旧账触发提示）。
+func TestBroadcastWarningStreakResetsOnSuccess(t *testing.T) {
+	cfg := testConfig("devA", "A", freePort(t), "room-key-123")
+	h := newHarness(t, cfg)
+	h.t = t
+
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer good.Close()
+	deadPort := freePort(t)
+
+	var useDead atomic.Bool
+	b := sync.NewBroadcaster(&sync.Client{Timeout: 500 * time.Millisecond}, func() []sync.Peer {
+		base := good.URL
+		if useDead.Load() {
+			base = fmt.Sprintf("http://127.0.0.1:%d", deadPort)
+		}
+		return []sync.Peer{{NodeID: "p1", Name: "P1", BaseURL: base}}
+	})
+	b.SetRoomKey(cfg.RoomKey)
+	h.e.bcast = b
+
+	entry := model.NewEntry("devA", "A", "触发广播", time.Now())
+	useDead.Store(false)
+	h.e.broadcast(entry) // 成功，重置
+
+	useDead.Store(true)
+	for i := 0; i < broadcastWarnThreshold-1; i++ {
+		h.e.broadcast(entry)
+	}
+	if n := h.logs.count("New-NetFirewallRule"); n != 0 {
+		t.Fatalf("成功之后重新计数，未达阈值不应提示，实际 %d 条\n日志:\n%s", n, h.logs.dump())
+	}
+	h.e.broadcast(entry) // 第 3 次连续失败
+	if n := h.logs.count("New-NetFirewallRule"); n != 1 {
+		t.Fatalf("达阈值应提示一次，实际 %d 条\n日志:\n%s", n, h.logs.dump())
+	}
+}
+
+// 节流状态随 Stop 清空（没有 timer/goroutine 需要回收，但状态不能跨运行残留）。
+func TestStopClearsBroadcastWarningState(t *testing.T) {
+	cfg := testConfig("devA", "A", freePort(t), "room-key-123")
+	h := newHarness(t, cfg)
+	h.t = t
+	h.start(t)
+
+	deadPort := freePort(t)
+	h.usePeers(sync.Peer{NodeID: "p1", Name: "P1", BaseURL: fmt.Sprintf("http://127.0.0.1:%d", deadPort)})
+	entry := model.NewEntry("devA", "A", "触发广播", time.Now())
+	for i := 0; i < broadcastWarnThreshold; i++ {
+		h.e.broadcast(entry)
+	}
+
+	h.e.Stop()
+	h.e.bcMu.Lock()
+	left := len(h.e.bcState)
+	h.e.bcMu.Unlock()
+	if left != 0 {
+		t.Fatalf("Stop 后广播告警状态应清空，仍有 %d 条", left)
 	}
 }

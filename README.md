@@ -24,7 +24,7 @@ Ubuntu（X11 / Wayland）与 Windows 双平台，单个二进制、无 cgo、无
 |---|---|---|
 | Linux + X11 | `xclip` **或** `xsel` | 两者装一个即可；程序通过外部命令读写剪贴板 |
 | Linux + Wayland（`WAYLAND_DISPLAY` 非空） | `wl-clipboard`（`wl-paste` + `wl-copy`） | 必须两个命令都在 |
-| Windows | 无 | 剪贴板与托盘都走 Win32 API |
+| Windows | 放行同步端口入站（默认 TCP `47100`） | 剪贴板与托盘都走 Win32 API、无需额外依赖；但 Defender 防火墙**默认阻断入站**，不放行就只剩余单向同步 |
 | 构建时 | Go 1.24+ | 纯 Go，`CGO_ENABLED=0`，不需要 C 工具链 |
 
 Ubuntu 安装（`xclip` / `xsel` / `wl-clipboard` 都在官方 universe 仓库）：
@@ -40,6 +40,22 @@ sudo apt install wl-clipboard
 ```
 
 **为什么不能混用**：X11 的 `xclip`/`xsel` 在 Wayland 会话里只能看到 XWayland 的剪贴板，而原生 Wayland 剪贴板是另一份数据——混用的表现是「同步过去的不是你在用的那份」。所以程序按会话变量严格选择：`WAYLAND_DISPLAY` 非空就要求 `wl-clipboard`，否则要求 `xclip`/`xsel`；两者都没有则直接报「未检测到图形会话」并退出。
+
+### 放行防火墙（Windows 必做；Linux 开了 ufw 也要）
+
+clipshare 是对等 P2P：**两个方向都要能连**。Windows Defender 默认阻断入站，不放行的典型表现是「能收到别人的内容，别人收不到你的」——实测 Linux → Windows 的 `GET /v1/health` 与 `POST /v1/items` 都返回 `HTTP 000`（连不上），反向 Windows → Linux 却是 `HTTP 200`。
+
+Windows（管理员 PowerShell，`LocalPort` 改成你配置里的 `port`）：
+
+```powershell
+New-NetFirewallRule -DisplayName clipshare -Direction Inbound -Protocol TCP -LocalPort 47100 -Action Allow
+```
+
+Linux（若启用了 ufw，同样改端口）：
+
+```bash
+sudo ufw allow 47100/tcp
+```
 
 ## 3. 快速开始
 
@@ -140,6 +156,7 @@ v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都
 3. **图片 / 非文本**：剪贴板里没有文本时视为「无变化」，不入历史、不广播。
 4. **不重试**：广播失败或超时（3s）只记日志——剪贴板内容有过期语义，延迟重发会造成「你以为复制了 A，剪贴板后来跳成 B」的时序错乱。
 5. **暂停是「外向」开关**：不广播本机内容、不写本机剪贴板；但**远端条目仍会进入本地历史**（历史与剪贴板是两条独立通道，与关闭「自动应用」时的行为一致）。
+6. **同一台机器跑两个实例联调时，历史来源可能显示成「另一个实例」**：两个进程共享同一个剪贴板——A 收到远端内容写进剪贴板后，B 的轮询会把同一份内容识别成「本机复制」，于是 B 的历史里来源显示为 B 而不是 A。这**既不是转发也不是回环**：服务端按内容去重（重复条目回 `202` 后丢弃），不会扩散；真实的两台机器各有独立剪贴板，也不会出现。单机自测时别把这条当 bug，用两份内容或两台机器区分即可。
 
 ## 7. 配置项（`config.json`）
 
@@ -187,7 +204,15 @@ v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都
 - **收不到别的内容**：
   1. `curl -s http://<对端IP>:47100/v1/health`，比较两边的 `roomHash` 是否一致（不一致 = `roomKey` 不同）；
   2. 确认在同一网段；若组播被禁，按第 4 节配置 `seeds`；
-  3. 确认防火墙放行 `47100/tcp`（入站）。
+  3. 确认**两端**都放行 `47100/tcp` 入站（Windows 见第 2 节的 PowerShell 命令；ufw 用 `sudo ufw allow 47100/tcp`）。
+- **一端能收到、另一端收不到**：九成是「收得到的那端」防火墙没放入站（Windows Defender 默认阻断）。按第 2 节命令放行，然后从**两个方向各测一次**定位：
+
+  ```bash
+  curl -s -m 3 -o /dev/null -w '%{http_code}\n' http://<对方IP>:47100/v1/health
+  ```
+
+  `200` = 这个方向通；`000` = 连不上（被防火墙挡、端口不对或没在监听）。哪边测出 `000`，就是哪边的入站没放行。
+- **日志显示「广播条目 … 当前无可用节点」**：说明 peer 发现根本没成功，而不是发送失败。依次确认：① 各机 `roomKey` 一致；② `mdns: false` 时 `seeds` 的 `host:port` 填对且能互相路由；③ 端口入站已放行——seeds 探活走的就是同一个端口，被防火墙挡住就永远发现不了对方。
 - **Linux 报缺剪贴板命令**：X11 下报 `缺少剪贴板命令 xclip/xsel：请安装其一，例如 sudo apt install xclip（或 sudo apt install xsel）`；Wayland 下报 `Wayland 会话缺少剪贴板命令 wl-paste、wl-copy：请安装 wl-clipboard：sudo apt install wl-clipboard`——按提示装即可。若你其实在 X11 会话却带着 `WAYLAND_DISPLAY`，清掉该变量再启动。
 - **无图形会话**：报 `未检测到图形会话（DISPLAY 与 WAYLAND_DISPLAY 均未设置），无法访问剪贴板` ——剪贴板必须有桌面会话，SSH/headless 下不可用。
 - **配置被重置**：日志提示配置损坏时，同目录的 `config.json.bak` 是原文件；重建后 `deviceId` / `roomKey` 变了，需要重新对齐房间码。
@@ -313,7 +338,7 @@ clipshare 0.1.0 —— 局域网剪贴板共享
 
 - 托盘菜单逐项点击：取回历史、发送当前剪贴板、勾选自动应用 / mDNS、查看全部历史、退出。
 - 两台真机（或两个进程 + `seeds` 互指）互相同步；A→B→A 不回环。
-- Windows 侧实际运行。
+- Windows 侧实际运行（已在真实 Windows 10 + Linux 双机环境验证；新环境请按第 2 节放行防火墙入站）。
 - 禁多播网络下 `mdns: false` + `seeds` 的两机连通。
 
 依赖表依据：`apt-cache policy xclip xsel wl-clipboard` 显示三者在本机 focal/universe 仓库均有候选包（`xclip 0.13-1`、`xsel 1.2.0+git9bfc13d.20180109-3`、`wl-clipboard 2.0.0-1`），本机已装 `xsel`。

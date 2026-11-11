@@ -24,6 +24,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	stdsync "sync"
 	"time"
 
@@ -41,6 +43,13 @@ const (
 
 	// shutdownTimeout 是 Stop 时等待 HTTP 连接收尾的上限。
 	shutdownTimeout = 3 * time.Second
+
+	// broadcastWarnThreshold 是「连续多少轮广播全部失败」后才给出可操作提示。
+	// 用连续轮次而不是时间窗：一轮广播 = 一次用户复制，连续三轮全部失败基本可以排除偶发抖动。
+	broadcastWarnThreshold = 3
+
+	// broadcastWarnInterval 是同一节点的提示节流窗口（每个节点每分钟最多一条）。
+	broadcastWarnInterval = 60 * time.Second
 )
 
 // Version 是协议握手与 /v1/health 上报的版本号。
@@ -102,6 +111,15 @@ type Engine struct {
 	// 避免并发 SetMDNS 交错执行时旧 Finder 的 goroutine/mDNS 连接泄漏。
 	finderRebuildMu stdsync.Mutex
 
+	// bcMu 保护「广播持续失败」的聚合状态（按 peer 地址记连续失败轮次与上次告警时间）。
+	// Stop 会把它清空，避免残留状态在下次 Start 时误报。这里只用时间戳比较，
+	// 不起 timer/goroutine，因此不存在需要回收的后台资源。
+	bcMu    stdsync.Mutex
+	bcState map[string]*peerFailure
+
+	// now 可注入（测试用），默认 time.Now。
+	now func() time.Time
+
 	wg stdsync.WaitGroup
 }
 
@@ -124,6 +142,8 @@ func New(cfg *config.Config, store *history.Store, board clip.Clipboard, logf fu
 		cfgDir:    configDirFor(cfg),
 		autoApply: cfg.AutoApply,
 		mdns:      cfg.MDNS,
+		bcState:   map[string]*peerFailure{},
+		now:       time.Now,
 	}
 	if e.cfgDir == "" {
 		e.setErr(errors.New("配置目录不可用，设置改动无法保存"))
@@ -224,6 +244,11 @@ func (e *Engine) Start() error {
 
 // Stop 停止轮询、发现与 HTTP 服务。可重复调用。
 func (e *Engine) Stop() {
+	// 广播告警的节流状态只属于本次运行，Stop 时清空（无 timer/goroutine 需要回收）。
+	e.bcMu.Lock()
+	e.bcState = nil
+	e.bcMu.Unlock()
+
 	e.mu.Lock()
 	started := e.started
 	e.started = false
@@ -443,18 +468,18 @@ func (e *Engine) broadcast(entry model.Entry) {
 	if e.bcast == nil {
 		return
 	}
-	peers := e.peerList()
-	if len(peers) == 0 {
+	results := e.bcast.Broadcast(entry)
+	if len(results) == 0 {
 		e.logf("[engine] 广播条目 %s：当前无可用节点", entry.ID)
 		return
 	}
-	results := e.bcast.Broadcast(entry)
 	failures := sync.Failures(results)
 	e.logf("[engine] 广播条目 %s 到 %d 个节点（失败 %d）", entry.ID, len(results), len(failures))
 	for _, r := range failures {
 		// S7：只记日志，不重试——剪贴板内容有过期语义，延迟重发会造成时序错乱。
 		e.logf("[engine] 广播到 %s 失败（不重试）: %v", r.Peer.Label(), r.Err)
 	}
+	e.noteBroadcastResults(results)
 }
 
 // peerList 把发现结果转成同步层需要的 peer 列表。
@@ -604,4 +629,159 @@ func shortID(id string) string {
 		return id
 	}
 	return id[:6]
+}
+
+// --- 广播持续失败的可操作提示 -------------------------------------------------
+//
+// 背景（真实故障）：Windows Defender 防火墙默认阻断**入站**，而 clipshare 是对等 P2P，
+// 两个方向都要能连。于是出现「Windows 能发出去、Linux 发不回来」的单向静默同步失败，
+// 日志里只有一行「广播失败」，用户不知道该怎么办。这里把「连续失败」翻译成能照做的提示。
+//
+// 分类原则：区分「连不上」（防火墙/关机/不在同一网段）与「连上了但被拒」（房间码不一致）。
+//   - 连不上：HTTP 请求根本没到达对端，net/http 会把拨号失败/超时/主机不可达统一包成
+//     实现 net.Error 的 *url.Error（底层是 *net.OpError 包着 ECONNREFUSED/EHOSTUNREACH 等）。
+//     因此这里用 net.Error + context 超时判定即可，不需要逐个平台去比 syscall 常量
+//     （那些常量在 Windows 上的名字与语义还不完全一样）。
+//   - 连上了但被拒：sync.Client 会返回 *sync.PostError，其中 Status 是真实 HTTP 状态码；
+//     401/403 正是「房间码不一致」的表现（服务端按 Bearer/roomHash 拒收）。
+
+// failureKind 是广播失败的分类。
+type failureKind int
+
+const (
+	// failureConnectivity：请求没到达对端（连接被拒、超时、主机不可达）。
+	failureConnectivity failureKind = iota
+	// failureAuth：对端可达但拒绝鉴权（401/403，多半是房间码不一致）。
+	failureAuth
+	// failureServer：对端可达但返回了其它错误（5xx 之类），需要看对端日志。
+	failureServer
+)
+
+// peerFailure 是单个 peer 的连续失败状态。
+type peerFailure struct {
+	streak   int       // 连续「整轮全部失败」的轮次
+	lastWarn time.Time // 上次告警时间，用于节流
+}
+
+// isConnectivityErr 判定错误是否属于「连不上」。
+//
+// 依据：Go 的 net/http 把拨号/读写失败与超时都包成 *url.Error，它实现了 net.Error；
+// 未拿到 HTTP 响应的失败（连接被拒、主机不可达、i/o 超时、context 超时）都落在这里。
+// 已经拿到响应的错误会走 *sync.PostError 分支，不会进这个函数。
+func isConnectivityErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var ne net.Error
+	return errors.As(err, &ne)
+}
+
+// classifyBroadcastError 给一次广播失败分类。
+func classifyBroadcastError(err error) failureKind {
+	var pe *sync.PostError
+	if errors.As(err, &pe) {
+		switch {
+		case pe.Status == http.StatusUnauthorized || pe.Status == http.StatusForbidden:
+			return failureAuth
+		case pe.Status == 0:
+			// 没拿到状态码 = 请求没到对端。
+			return failureConnectivity
+		default:
+			return failureServer
+		}
+	}
+	if isConnectivityErr(err) {
+		return failureConnectivity
+	}
+	return failureServer
+}
+
+// noteBroadcastResults 汇总一轮广播的结果：
+//   - 只要有一个 peer 成功，就说明链路本身是通的，清空所有连续失败计数；
+//   - 整轮全部失败时，逐个 peer 累计连续失败轮次，到阈值后发一条节流提示。
+func (e *Engine) noteBroadcastResults(results []sync.Result) {
+	if len(results) == 0 {
+		return
+	}
+	for _, r := range results {
+		if r.OK() {
+			e.bcMu.Lock()
+			for _, st := range e.bcState {
+				st.streak = 0
+			}
+			e.bcMu.Unlock()
+			return
+		}
+	}
+
+	now := e.now()
+	var warnings []string
+	e.bcMu.Lock()
+	if e.bcState == nil { // Stop 之后被误调用时不要 panic
+		e.bcState = map[string]*peerFailure{}
+	}
+	for _, r := range results {
+		key := r.Peer.BaseURL
+		st := e.bcState[key]
+		if st == nil {
+			st = &peerFailure{}
+			e.bcState[key] = st
+		}
+		st.streak++
+		if st.streak < broadcastWarnThreshold {
+			continue
+		}
+		if !st.lastWarn.IsZero() && now.Sub(st.lastWarn) < broadcastWarnInterval {
+			continue // 节流窗口内不重复刷
+		}
+		st.lastWarn = now
+		warnings = append(warnings, broadcastWarning(r, st.streak))
+	}
+	e.bcMu.Unlock()
+
+	for _, msg := range warnings {
+		e.logf("[engine] %s", msg)
+		e.setErr(errors.New(msg))
+	}
+}
+
+// broadcastWarning 生成一条「照做就行」的提示，端口取自该 peer 的实际地址。
+func broadcastWarning(r sync.Result, streak int) string {
+	addr, port := peerHostPort(r.Peer.BaseURL)
+	switch classifyBroadcastError(r.Err) {
+	case failureConnectivity:
+		return fmt.Sprintf("节点 %s 连续 %d 轮广播全部失败：连不上对端（%v）。"+
+			"若对端是 Windows，请用管理员 PowerShell 放行入站 TCP %s："+
+			"New-NetFirewallRule -DisplayName clipshare -Direction Inbound -Protocol TCP -LocalPort %s -Action Allow；"+
+			"也可能是机器已关机或不在同一网段。",
+			addr, streak, r.Err, port, port)
+	case failureAuth:
+		return fmt.Sprintf("节点 %s 连续 %d 轮广播被拒（%v）：对端可达但拒绝了鉴权，"+
+			"多半是两端的房间码（roomKey）不一致，请核对 --room 或 config.json 里的 roomKey。",
+			addr, streak, r.Err)
+	default:
+		return fmt.Sprintf("节点 %s 连续 %d 轮广播失败（%v）：对端服务可达但返回错误，"+
+			"请查看对端日志（端口 %s 是否被别的程序占用）。", addr, streak, r.Err, port)
+	}
+}
+
+// peerHostPort 从 BaseURL 里取出「host:port」与端口，用于提示文案。
+func peerHostPort(baseURL string) (addr, port string) {
+	raw := strings.TrimSpace(baseURL)
+	if u, err := url.Parse(raw); err == nil && u.Host != "" {
+		addr = u.Host
+		port = u.Port()
+	} else {
+		addr = strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(raw, "http://"), "https://"), "/")
+		if i := strings.LastIndex(addr, ":"); i > 0 {
+			port = addr[i+1:]
+		}
+	}
+	if port == "" {
+		port = "该"
+	}
+	return addr, port
 }
