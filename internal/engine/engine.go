@@ -107,22 +107,37 @@ func New(cfg *config.Config, store *history.Store, board clip.Clipboard, logf fu
 	if logf == nil {
 		logf = log.Printf
 	}
-	dir, err := config.Dir()
 	e := &Engine{
 		cfg:       cfg,
 		store:     store,
 		board:     board,
 		logf:      logf,
-		cfgDir:    dir,
+		cfgDir:    configDirFor(cfg),
 		autoApply: cfg.AutoApply,
 		mdns:      cfg.MDNS,
 	}
-	if err != nil {
-		// 拿不到配置目录不影响运行，只影响「设置能否落盘」。
-		e.cfgDir = ""
-		e.setErr(fmt.Errorf("配置目录不可用，设置改动无法保存: %w", err))
+	if e.cfgDir == "" {
+		e.setErr(errors.New("配置目录不可用，设置改动无法保存"))
 	}
 	return e
+}
+
+// configDirFor 决定「托盘开关要写回哪个目录」。
+//
+// 优先用 cfg.Dir —— 那是 config.Load(dir) 实际读到的目录（即 --config-dir 的值）。
+// 直接推算 config.Dir() 会忽略调用方指定的目录，导致开关写回默认目录：
+// 用户带 --config-dir 运行时会在默认目录凭空多出一份 config.json，
+// 双进程实测（两个不同 --config-dir）还会互相覆盖。
+// cfg.Dir 为空只在直接构造 &config.Config{...} 的旧用法或单测里出现，此时回退到默认目录。
+func configDirFor(cfg *config.Config) string {
+	if cfg != nil && cfg.Dir != "" {
+		return cfg.Dir
+	}
+	dir, err := config.Dir()
+	if err != nil {
+		return ""
+	}
+	return dir
 }
 
 // Start 启动 HTTP 服务端、发现、剪贴板轮询。

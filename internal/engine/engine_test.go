@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	stdsync "sync"
 	"testing"
@@ -120,14 +121,18 @@ type harness struct {
 }
 
 // newHarness 造一台不落盘、不碰用户配置目录的引擎。
+//
+// 配置目录通过 cfg.Dir 注入（与 main 走 config.Load(dir) 的路径一致），
+// 这样也顺带验证 engine.New 确实用的是调用方指定的目录。
 func newHarness(t *testing.T, cfg *config.Config) *harness {
 	t.Helper()
+	if cfg.Dir == "" {
+		cfg.Dir = t.TempDir()
+	}
 	store := history.New(cfg.HistoryLimit, "", false)
 	fc := &fakeClip{}
 	logs := &logBuf{}
 	e := New(cfg, store, fc, logs.logf)
-	// 测试不写真实 ~/.config/clipshare：把配置目录指到临时目录。
-	e.cfgDir = t.TempDir()
 	t.Cleanup(e.Stop)
 	return &harness{e: e, clip: fc, cfg: cfg, logs: logs}
 }
@@ -393,4 +398,78 @@ func TestVersionInjectionReportedByHealth(t *testing.T) {
 	if got.RoomHash != model.RoomHash("room-key-123") {
 		t.Fatalf("health roomHash 异常: %q", got.RoomHash)
 	}
+}
+
+// 托盘开关必须写回「调用方传进来的配置目录」（即 --config-dir），
+// 而不是 engine 自己推算的默认目录——否则带 --config-dir 运行时会在默认目录
+// 凭空多出一份 config.json，双进程实测还会互相覆盖。
+func TestSetAutoApplyWritesToInjectedConfigDir(t *testing.T) {
+	injected := t.TempDir()
+	cfg := testConfig("devA", "A", freePort(t), "room-key-123")
+	cfg.Dir = injected
+
+	defaultDir, dirErr := config.Dir()
+	if dirErr == nil {
+		// 记录默认目录的现状，测试结束前必须保持原样（不被创建、不被改写）。
+		before, beforeExists := readIfExists(t, config.Path(defaultDir))
+		t.Cleanup(func() {
+			after, afterExists := readIfExists(t, config.Path(defaultDir))
+			if beforeExists != afterExists || string(before) != string(after) {
+				t.Errorf("默认配置目录被写入了：%s（exists %v → %v）", config.Path(defaultDir), beforeExists, afterExists)
+			}
+		})
+	}
+
+	h := newHarness(t, cfg)
+	if h.e.cfgDir != injected {
+		t.Fatalf("engine 应使用注入的配置目录 %q，实际 %q", injected, h.e.cfgDir)
+	}
+
+	want := !cfg.AutoApply
+	if err := h.e.SetAutoApply(want); err != nil {
+		t.Fatalf("SetAutoApply: %v", err)
+	}
+
+	raw, exists := readIfExists(t, config.Path(injected))
+	if !exists {
+		t.Fatalf("注入的配置目录里应出现 config.json")
+	}
+	var saved config.Config
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		t.Fatalf("解析写回的配置: %v", err)
+	}
+	if saved.AutoApply != want {
+		t.Fatalf("写回的 autoApply = %v，期望 %v", saved.AutoApply, want)
+	}
+}
+
+// cfg.Dir 为空时回退到默认目录（保住直接构造 &config.Config{} 的旧用法）。
+func TestConfigDirFallbackWhenUnset(t *testing.T) {
+	cfg := testConfig("devA", "A", freePort(t), "room-key-123")
+	cfg.Dir = "" // 故意不注入
+
+	store := history.New(cfg.HistoryLimit, "", false)
+	e := New(cfg, store, &fakeClip{}, nil)
+	t.Cleanup(e.Stop)
+
+	want, err := config.Dir()
+	if err != nil {
+		t.Skipf("当前环境无法确定默认配置目录: %v", err)
+	}
+	if e.cfgDir != want {
+		t.Fatalf("cfg.Dir 为空时应回退到 %q，实际 %q", want, e.cfgDir)
+	}
+}
+
+// readIfExists 读文件内容并报告是否存在；不存在时返回 (nil,false)。
+func readIfExists(t *testing.T, path string) ([]byte, bool) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, false
+	}
+	if err != nil {
+		t.Fatalf("读 %s: %v", path, err)
+	}
+	return raw, true
 }

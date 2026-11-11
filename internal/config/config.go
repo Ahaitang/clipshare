@@ -42,6 +42,10 @@ type Config struct {
 	PollIntervalMs int      `json:"pollIntervalMs"`
 	// NoTray 为 true 时不初始化托盘（无 DBus / 无 GNOME 扩展的环境）。
 	NoTray bool `json:"noTray"`
+
+	// Dir 是本次运行实际使用的配置目录（运行期字段，不写入 JSON）。
+	// 由 Load 填入，供 engine 等处保存配置时复用，避免各处各自推算而分叉。
+	Dir string `json:"-"`
 }
 
 // configJSON 用指针区分「字段缺失」与「显式零值」，
@@ -99,10 +103,14 @@ func Default() *Config {
 
 // Load 从 dir 读取配置。文件不存在则生成默认配置并落盘；
 // 文件损坏则把原文件备份为 .bak 后用默认值重建。
+//
+// 无论走哪条返回路径，成功返回的 Config 都会带上 Dir = dir（运行期字段、不落盘），
+// 调用方（如 engine 保存托盘开关）应复用它，而不是自己再去推算配置目录。
 func Load(dir string) (*Config, error) {
 	raw, err := os.ReadFile(Path(dir))
 	if os.IsNotExist(err) {
 		cfg := Default()
+		cfg.Dir = dir
 		if saveErr := cfg.Save(dir); saveErr != nil {
 			return cfg, saveErr
 		}
@@ -117,6 +125,7 @@ func Load(dir string) (*Config, error) {
 		backup := Path(dir) + ".bak"
 		_ = os.WriteFile(backup, raw, 0o600)
 		cfg := Default()
+		cfg.Dir = dir
 		if saveErr := cfg.Save(dir); saveErr != nil {
 			return cfg, fmt.Errorf("配置损坏（已备份到 %s）且重写失败: %w", backup, saveErr)
 		}
@@ -124,6 +133,7 @@ func Load(dir string) (*Config, error) {
 	}
 
 	cfg := Default()
+	cfg.Dir = dir
 	cfg.DeviceID = "" // 缺失时下面补
 	applyJSON(cfg, &parsed)
 	if cfg.DeviceID == "" {

@@ -216,3 +216,80 @@ func TestRoomHashDoesNotLeakKey(t *testing.T) {
 		t.Fatal("roomHash 不应等于密钥")
 	}
 }
+
+// Load 必须在所有成功返回路径上填好 Dir（运行期字段），engine 保存开关时要复用它。
+func TestLoadFillsRuntimeDir(t *testing.T) {
+	t.Run("文件缺失、新建默认配置", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg, err := Load(dir)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Dir != dir {
+			t.Fatalf("cfg.Dir = %q，期望 %q", cfg.Dir, dir)
+		}
+	})
+
+	t.Run("正常加载已有文件", func(t *testing.T) {
+		dir := t.TempDir()
+		first, err := Load(dir)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if err := first.Save(dir); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+		again, err := Load(dir)
+		if err != nil {
+			t.Fatalf("二次 Load: %v", err)
+		}
+		if again.Dir != dir {
+			t.Fatalf("二次加载 cfg.Dir = %q，期望 %q", again.Dir, dir)
+		}
+	})
+
+	t.Run("损坏后重建", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(Path(dir), []byte("{ 这不是 JSON"), 0o600); err != nil {
+			t.Fatalf("写损坏配置: %v", err)
+		}
+		cfg, err := Load(dir)
+		if err == nil {
+			t.Fatal("损坏配置应返回告警错误")
+		}
+		if cfg == nil {
+			t.Fatal("损坏重建路径仍应返回可用的默认配置")
+		}
+		if cfg.Dir != dir {
+			t.Fatalf("重建后的 cfg.Dir = %q，期望 %q", cfg.Dir, dir)
+		}
+	})
+}
+
+// Dir 是运行期字段，绝不能落盘（否则两个实例会互相看到对方的历史目录）。
+func TestDirNotPersisted(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	cfg.Dir = "/some/other/place"
+	if err := cfg.Save(dir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	raw, err := os.ReadFile(Path(dir))
+	if err != nil {
+		t.Fatalf("读配置: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("解析配置 JSON: %v", err)
+	}
+	if _, ok := m["dir"]; ok {
+		t.Fatalf("配置 JSON 不应包含 dir 字段，实际内容:\n%s", raw)
+	}
+	if _, ok := m["Dir"]; ok {
+		t.Fatalf("配置 JSON 不应包含 Dir 字段，实际内容:\n%s", raw)
+	}
+}
