@@ -47,6 +47,20 @@ func (c *HTTPClient) Entries() ([]model.Entry, error) {
 	return entries, nil
 }
 
+// Restart 请求运行中的实例重启（配置改动后应用新设置）。
+func (c *HTTPClient) Restart() error {
+	resp, err := c.Client.Post(c.BaseURL+"/ui/api/restart", "application/json", bytes.NewReader([]byte("{}")))
+	if err != nil {
+		return fmt.Errorf("连接本机历史页失败（clipshare 是否在运行？）: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusAccepted || resp.StatusCode == http.StatusOK {
+		return nil
+	}
+	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	return fmt.Errorf("重启请求被拒: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+}
+
 // Pull 取回指定条目（S3：写本机剪贴板但不广播）。
 func (c *HTTPClient) Pull(id string) error {
 	body, err := json.Marshal(map[string]string{"id": id})

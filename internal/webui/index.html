@@ -21,6 +21,19 @@ body{ margin:0; padding:28px 20px 64px; background:var(--bg); color:var(--ink); 
 .brand .sub{color:var(--dim);font-size:13px}
 .tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 input[type=search]{width:240px;padding:7px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit;outline:none}
+.room{margin:14px 0 4px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.room>summary{padding:11px 14px;cursor:pointer;font-size:14px;color:var(--muted);list-style:none}
+.room>summary::-webkit-details-marker{display:none}
+.room>summary::before{content:"▸ ";}
+.room[open]>summary::before{content:"▾ ";}
+.room-body{padding:0 14px 14px;display:flex;flex-direction:column;gap:10px}
+.room-row{display:flex;gap:8px;align-items:center}
+.room-label{font-size:13px;color:var(--muted);min-width:52px}
+.invite-code{flex:1;background:var(--code);padding:8px 11px;border-radius:8px;font-size:13px;
+  overflow-x:auto;white-space:nowrap}
+.room-hint{font-size:13px;color:var(--muted);margin:0;line-height:1.6}
+#joinCode{flex:1;padding:8px 11px;border:1px solid var(--line);border-radius:8px;
+  background:var(--bg);color:var(--ink);font:inherit}
 input[type=search]:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
 .count{color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums;min-width:56px}
 button{font:inherit;padding:6px 12px;border-radius:8px;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
@@ -81,6 +94,25 @@ button.copy{font-size:12px;padding:5px 10px;white-space:nowrap;align-self:start}
     <button id="cancel" type="button">取消</button>
     <button id="confirmClear" type="button" class="primary">确认清空</button>
   </div>
+
+  <details id="room" class="room">
+    <summary>房间与邀请</summary>
+    <div class="room-body">
+      <div class="room-row">
+        <span class="room-label">邀请码</span>
+        <code id="invite" class="invite-code">读取中…</code>
+        <button id="copyInvite" type="button">复制</button>
+      </div>
+      <p class="room-hint">把这串邀请码发给其他人，让他在新电脑上执行 <code>clipshare join '&lt;邀请码&gt;'</code>，
+        或直接粘到下面的输入框里加入。</p>
+      <div class="room-row">
+        <input id="joinCode" type="text" placeholder="粘贴邀请码，例如 clipshare1:room@192.168.1.7:47100"
+               autocomplete="off" spellcheck="false">
+        <button id="join" type="button" class="primary">加入房间</button>
+      </div>
+      <p id="joinMsg" class="room-hint" hidden></p>
+    </div>
+  </details>
 
   <main id="list" class="list" aria-live="polite"></main>
   <p id="empty" class="empty" hidden></p>
@@ -224,6 +256,44 @@ $('#restart').addEventListener('click', async () => {
     setTimeout(() => location.reload(), 2500);
   } catch (e) {
     $('#restart').disabled = false;
+    toast(e.message, true);
+  }
+});
+
+$('#room').addEventListener('toggle', async () => {
+  if (!$('#room').open) return;
+  try {
+    const r = await fetch('/ui/api/invite', { cache: 'no-store' });
+    if (!r.ok) throw new Error(await message(r, '读取邀请码失败'));
+    const data = await r.json();
+    $('#invite').textContent = data.code || '（无）';
+  } catch (e) {
+    $('#invite').textContent = e.message;
+  }
+});
+
+$('#copyInvite').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('#invite').textContent);
+    toast('邀请码已复制');
+  } catch (e) {
+    toast('复制失败，请手动选中复制', true);
+  }
+});
+
+$('#join').addEventListener('click', async () => {
+  const code = $('#joinCode').value.trim();
+  if (!code) { toast('请先粘贴邀请码', true); return; }
+  $('#join').disabled = true;
+  try {
+    const r = await fetch('/ui/api/join', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }),
+    });
+    if (!r.ok) throw new Error(await message(r, '加入失败'));
+    toast('已加入房间，正在重启…');
+    setTimeout(() => location.reload(), 2500);
+  } catch (e) {
+    $('#join').disabled = false;
     toast(e.message, true);
   }
 });

@@ -27,6 +27,7 @@ import (
 	"clipshare/internal/engine"
 	"clipshare/internal/history"
 	"clipshare/internal/model"
+	"clipshare/internal/onboard"
 	"clipshare/internal/tray"
 	"clipshare/internal/webui"
 )
@@ -54,9 +55,18 @@ func main() {
 
 // run 返回进程退出码，便于单测覆盖参数解析与 --version 路径。
 func run(args []string, stdout, stderr io.Writer) int {
-	// 子命令：clipshare pick（由桌面快捷键拉起，跨进程复用历史页 API）。
-	if len(args) > 0 && args[0] == "pick" {
-		return runPick(args[1:], stdout, stderr)
+	// 子命令：pick（快捷键拉起的选择窗口）与 onboarding 三件套。
+	if len(args) > 0 {
+		switch args[0] {
+		case "pick":
+			return runPick(args[1:], stdout, stderr)
+		case "invite":
+			return runInvite(args[1:], stdout, stderr)
+		case "join":
+			return runJoin(args[1:], stdout, stderr)
+		case "init":
+			return runInit(args[1:], stdout, stderr)
+		}
 	}
 
 	opts, err := parseOptions(args, stdout, stderr)
@@ -211,7 +221,11 @@ func serve(opts *options) error {
 	defer eng.Stop()
 
 	// 本地历史页只绑回环地址（spec §9）；起不来不影响同步。
-	uiURL, closeUI := startWebUI(eng, cfg.Port, dir)
+	uiURL, closeUI := startWebUI(eng, cfg.Port, dir, webui.Options{
+		Restart: requestRestart,
+		Invite:  func() (string, error) { return onboard.Build(cfg).String(), nil },
+		Join:    func(code string) error { return joinRoom(dir, code) },
+	})
 	if closeUI != nil {
 		defer closeUI()
 	}
@@ -287,7 +301,7 @@ func loadConfig(dir string, opts *options) (*config.Config, error) {
 //
 // 只绑回环地址（spec §9：本包不鉴权）。历史页不可用不阻断同步：
 // 失败时只记日志并返回空地址。这里 listen 的是 port+1，绝不碰同步端口。
-func startWebUI(ctrl engine.Controller, syncPort int, cfgDir string) (string, func()) {
+func startWebUI(ctrl engine.Controller, syncPort int, cfgDir string, webOpts webui.Options) (string, func()) {
 	ln, err := net.Listen("tcp", loopbackAddr(syncPort+uiAddrOffset))
 	if err != nil {
 		// port+1 被占用时退回系统分配的端口，优先保证页面可用。
@@ -299,7 +313,7 @@ func startWebUI(ctrl engine.Controller, syncPort int, cfgDir string) (string, fu
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/", webui.Handler(ctrl, webui.Options{Restart: requestRestart}))
+	mux.Handle("/", webui.Handler(ctrl, webOpts))
 	srv := &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,

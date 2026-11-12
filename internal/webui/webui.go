@@ -7,8 +7,10 @@ package webui
 import (
 	_ "embed"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"clipshare/internal/engine"
 	"clipshare/internal/model"
@@ -35,6 +37,10 @@ type Options struct {
 	// Restart 是「重启」按钮的回调（nil 时按钮置灰并说明不可用）。
 	// 由 cmd 层注入：重启意味着退出并重新拉起进程，属于应用生命周期。
 	Restart func()
+	// Invite 返回本机邀请码（房间码 + 本机地址）；nil 时页面不显示邀请块。
+	Invite func() (string, error)
+	// Join 用一条邀请码加入别人的房间（写配置 + 重启）；nil 时页面不显示加入框。
+	Join func(code string) error
 }
 
 func Handler(ctrl engine.Controller, opts Options) http.Handler {
@@ -46,6 +52,8 @@ func Handler(ctrl engine.Controller, opts Options) http.Handler {
 	mux.HandleFunc("POST /ui/api/pull", api.pull)
 	mux.HandleFunc("POST /ui/api/clear", api.clear)
 	mux.HandleFunc("POST /ui/api/restart", api.restart)
+	mux.HandleFunc("GET /ui/api/invite", api.invite)
+	mux.HandleFunc("POST /ui/api/join", api.join)
 	// 顺手让根路径跳到页面，免得用户从端口地址摸进来看到 404。
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui", http.StatusFound)
@@ -104,6 +112,40 @@ func (a *api) clear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// invite 返回本机邀请码。
+func (a *api) invite(w http.ResponseWriter, r *http.Request) {
+	if a.opts.Invite == nil {
+		writeError(w, http.StatusNotImplemented, "当前模式下不提供邀请码")
+		return
+	}
+	code, err := a.opts.Invite()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"code": code})
+}
+
+// join 用邀请码加入别人的房间。成功后由 cmd 层负责重启使配置生效。
+func (a *api) join(w http.ResponseWriter, r *http.Request) {
+	if a.opts.Join == nil {
+		writeError(w, http.StatusNotImplemented, "当前模式下不支持加入房间")
+		return
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体不是合法的 JSON")
+		return
+	}
+	if err := a.opts.Join(strings.TrimSpace(body.Code)); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "joined"})
 }
 
 // restart 触发一次重启：先回 202，再在后台请求重启。
