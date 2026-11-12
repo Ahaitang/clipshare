@@ -30,6 +30,18 @@ pandoc README.md -f gfm -t html5 --standalone --toc --toc-depth=2 \
     -o "$DIST/README.html"
 cp README.md "$DIST/README.md"
 
+# ---------- 使用手册（含配图） ----------
+echo "==> 生成使用手册"
+mkdir -p "$DIST/docs/images"
+python3 packaging/docs/build-guide.py "$ROOT" "$DIST/docs"
+if command -v google-chrome >/dev/null 2>&1; then
+    google-chrome --headless=new --disable-gpu --no-pdf-header-footer \
+        --print-to-pdf="$DIST/docs/guide.pdf" "file://$DIST/docs/guide.html" >/dev/null 2>&1 \
+        && echo "    guide.pdf 已生成" || echo "    ! PDF 生成失败（HTML 仍可用）"
+else
+    echo "    ! 未安装 google-chrome，跳过 PDF"
+fi
+
 # ---------- 二进制 ----------
 echo "==> 构建二进制"
 CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath \
@@ -45,6 +57,8 @@ mkdir -p "$DEBROOT/DEBIAN" "$DEBROOT/usr/bin" \
 install -m 0755 "$DIST/clipshare" "$DEBROOT/usr/bin/clipshare"
 install -m 0644 "$DIST/README.md" "$DEBROOT/usr/share/doc/clipshare/README.md"
 install -m 0644 "$DIST/README.html" "$DEBROOT/usr/share/doc/clipshare/README.html"
+install -m 0644 "$DIST/docs/guide.html" "$DEBROOT/usr/share/doc/clipshare/guide.html"
+[ -f "$DIST/docs/guide.pdf" ] && install -m 0644 "$DIST/docs/guide.pdf" "$DEBROOT/usr/share/doc/clipshare/guide.pdf"
 install -m 0644 packaging/deb/clipshare.service "$DEBROOT/usr/lib/systemd/user/clipshare.service"
 install -m 0755 packaging/deb/postinst "$DEBROOT/DEBIAN/postinst"
 install -m 0755 packaging/deb/prerm "$DEBROOT/DEBIAN/prerm"
@@ -79,6 +93,8 @@ NSISTAGE="$DIST/.nsis"
 mkdir -p "$NSISTAGE"
 cp "$DIST/clipshare.exe" "$NSISTAGE/"
 cp "$DIST/README.md" "$DIST/README.html" "$NSISTAGE/"
+cp "$DIST/docs/guide.html" "$NSISTAGE/"
+[ -f "$DIST/docs/guide.pdf" ] && cp "$DIST/docs/guide.pdf" "$NSISTAGE/"
 cp packaging/windows/setup.nsi "$NSISTAGE/"
 if command -v makensis >/dev/null 2>&1; then
     ( cd "$NSISTAGE" && makensis -V2 -DVERSION="$VERSION" -DPORT=47100 setup.nsi >/dev/null )
@@ -95,6 +111,8 @@ mkdir -p "$WINTREE"
 cp "$DIST/clipshare.exe" "$WINTREE/"
 cp packaging/windows/install.ps1 packaging/windows/uninstall.ps1 packaging/windows/安装.bat "$WINTREE/"
 cp "$DIST/README.md" "$DIST/README.html" "$WINTREE/"
+cp "$DIST/docs/guide.html" "$WINTREE/"
+[ -f "$DIST/docs/guide.pdf" ] && cp "$DIST/docs/guide.pdf" "$WINTREE/"
 WIN_ZIP="$DIST/clipshare-${VERSION}-windows-amd64.zip"
 ( cd "$DIST" && zip -qr "$WIN_ZIP" "clipshare-${VERSION}-windows-amd64" )
 rm -rf "$WINTREE"

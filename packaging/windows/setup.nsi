@@ -62,6 +62,8 @@ Section "clipshare" SecMain
   File "clipshare.exe"
   File "README.html"
   File "README.md"
+  File "guide.html"
+  File /nonfatal "guide.pdf"
 
   WriteUninstaller "$INSTDIR\uninstall.exe"
   WriteRegStr HKLM "Software\clipshare" "InstallDir" "$INSTDIR"
@@ -79,7 +81,8 @@ Section "clipshare" SecMain
   ; 开始菜单
   CreateDirectory "$SMPROGRAMS\clipshare"
   CreateShortCut "$SMPROGRAMS\clipshare\clipshare.lnk" "$INSTDIR\clipshare.exe" "--port ${PORT}" "$INSTDIR\clipshare.exe" 0
-  CreateShortCut "$SMPROGRAMS\clipshare\使用说明.lnk" "$INSTDIR\README.html"
+  CreateShortCut "$SMPROGRAMS\clipshare\使用手册.lnk" "$INSTDIR\guide.html"
+  CreateShortCut "$SMPROGRAMS\clipshare\README.lnk" "$INSTDIR\README.html"
   CreateShortCut "$SMPROGRAMS\clipshare\卸载.lnk" "$INSTDIR\uninstall.exe"
 
   ; 登录自启（机器级）
@@ -115,13 +118,16 @@ Section "Uninstall"
   DeleteRegKey HKLM "Software\clipshare"
 
   Delete "$SMPROGRAMS\clipshare\clipshare.lnk"
-  Delete "$SMPROGRAMS\clipshare\使用说明.lnk"
+  Delete "$SMPROGRAMS\clipshare\使用手册.lnk"
+  Delete "$SMPROGRAMS\clipshare\README.lnk"
   Delete "$SMPROGRAMS\clipshare\卸载.lnk"
   RMDir "$SMPROGRAMS\clipshare"
 
   Delete "$INSTDIR\clipshare.exe"
   Delete "$INSTDIR\README.html"
   Delete "$INSTDIR\README.md"
+  Delete "$INSTDIR\guide.html"
+  Delete "$INSTDIR\guide.pdf"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
 

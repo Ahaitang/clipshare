@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>clipshare 使用手册</title>
+<style>
+:root{
+  --fg:#1f2328; --muted:#57606a; --bg:#fff; --accent:#0969da;
+  --code-bg:#f6f8fa; --border:#d0d7de; --warn-bg:#fff8c5; --warn-border:#d4a72c;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --fg:#e6edf3; --muted:#9198a1; --bg:#0d1117; --accent:#4493f8;
+         --code-bg:#161b22; --border:#30363d; --warn-bg:#3a2d00; --warn-border:#bb8009; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.75 -apple-system,"Segoe UI","Noto Sans CJK SC","Microsoft YaHei",sans-serif}
+main{max-width:820px;margin:0 auto;padding:44px 26px 100px}
+h1{font-size:2.1em;margin:0 0 6px;letter-spacing:-.01em}
+h2{font-size:1.42em;margin:2.4em 0 .7em;padding-bottom:.28em;border-bottom:1px solid var(--border)}
+h3{font-size:1.1em;margin:1.7em 0 .5em}
+p,ul,ol{margin:.75em 0}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{background:var(--code-bg);padding:.14em .36em;border-radius:4px;
+  font:.87em/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;
+  padding:13px 16px;overflow-x:auto}
+pre code{background:none;padding:0;font-size:.86em}
+blockquote{margin:1em 0;padding:.4em 1em;border-left:4px solid var(--border);color:var(--muted)}
+table{border-collapse:collapse;width:100%;margin:1em 0;font-size:.94em}
+th,td{border:1px solid var(--border);padding:7px 11px;text-align:left;vertical-align:top}
+th{background:var(--code-bg);font-weight:600}
+.lead{color:var(--muted);font-size:1.05em;margin:0 0 26px}
+.toc{background:var(--code-bg);border:1px solid var(--border);border-radius:10px;padding:14px 20px}
+.toc ol{margin:.4em 0;padding-left:1.3em}
+figure{margin:1.8em 0;text-align:center}
+figure img{max-width:100%;border:1px solid var(--border);border-radius:10px;
+  box-shadow:0 2px 10px rgba(0,0,0,.08)}
+figure svg{max-width:100%;height:auto}
+figcaption{color:var(--muted);font-size:.9em;margin-top:.6em}
+.note{background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:8px;
+  padding:11px 15px;margin:1.2em 0;font-size:.95em}
+.kbd{display:inline-block;border:1px solid var(--border);border-bottom-width:2px;
+  border-radius:5px;padding:1px 7px;font:600 .85em/1.6 ui-monospace,Consolas,monospace;
+  background:var(--code-bg)}
+.pill{display:inline-block;background:var(--code-bg);border:1px solid var(--border);
+  border-radius:999px;padding:1px 10px;font-size:.82em;color:var(--muted);margin-right:6px}
+footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:.88em}
+@page{size:A4;margin:16mm 14mm}
+@media print{
+  main{max-width:none;padding:0}
+  h2{page-break-after:avoid}
+  figure,table,pre{page-break-inside:avoid}
+  a{color:var(--fg)}
+  .toc{page-break-after:always}
+}
+</style>
+</head>
+<body>
+<main>
+
+<h1>clipshare 使用手册</h1>
+<p class="lead">局域网剪贴板共享 · 单文件二进制 · 对等 P2P · Ubuntu 与 Windows</p>
+<p><span class="pill">版本 0.1.0</span><span class="pill">同步端口 47100</span><span class="pill">快捷键 Ctrl+Alt+V</span></p>
+
+<div class="toc">
+<strong>目录</strong>
+<ol>
+  <li><a href="#what">这是什么</a></li>
+  <li><a href="#install">安装</a></li>
+  <li><a href="#onboard">第一次配置：一条邀请码</a></li>
+  <li><a href="#hotkey">日常使用：Ctrl+Alt+V 取用历史</a></li>
+  <li><a href="#webui">本地历史页</a></li>
+  <li><a href="#tray">托盘菜单</a></li>
+  <li><a href="#how">工作原理</a></li>
+  <li><a href="#trouble">排障</a></li>
+  <li><a href="#security">安全边界</a></li>
+  <li><a href="#appendix">附录：命令与配置</a></li>
+</ol>
+</div>
+
+<h2 id="what">1. 这是什么</h2>
+<p>同一个局域网内的几台电脑，<strong>在一台机器上复制，另一台的剪贴板随即变成同样内容</strong>，
+并且每台机器都留有一份带来源标记的历史，随时可以从历史里翻出前几条重新复制。</p>
+<ul>
+  <li><strong>零依赖</strong>：单个可执行文件，静态编译（<code>CGO_ENABLED=0</code>），不需要装运行时。</li>
+  <li><strong>无中心节点</strong>：每台机器既是服务端也是客户端，两台就能用，多台自动成网。</li>
+  <li><strong>只同步纯文本</strong>：图片、文件、富文本不在范围内（v1 的明确取舍）。</li>
+</ul>
+
+<h2 id="install">2. 安装</h2>
+
+<h3>Ubuntu / Debian</h3>
+<pre><code>sudo dpkg -i clipshare_0.1.0_amd64.deb
+systemctl --user daemon-reload
+systemctl --user enable --now clipshare</code></pre>
+<p>装好后程序常驻托盘、开机自启，并<strong>自动把 <span class="kbd">Ctrl+Alt+V</span> 注册成历史快捷键</strong>
+（GNOME 自定义快捷键，槽位名 <code>clipshare</code>）。</p>
+<p>剪贴板读写依赖系统命令，按会话类型二选一：</p>
+<pre><code>sudo apt install xclip        # X11（或 xsel）
+sudo apt install wl-clipboard # Wayland</code></pre>
+
+<h3>Windows 10 / 11</h3>
+<p>双击 <code>clipshare-0.1.0-windows-setup.exe</code>，一路下一步即可。安装包会：</p>
+<ul>
+  <li>装到 <code>Program Files\clipshare</code>，创建开始菜单快捷方式；</li>
+  <li>登记<strong>登录自启</strong>（HKLM Run）；</li>
+  <li><strong>自动放行防火墙入站 TCP 47100</strong>（不放行就只剩单向同步）；</li>
+  <li>写入「程序和功能」里的卸载项。</li>
+</ul>
+<p>另有免安装版 <code>clipshare-0.1.0-windows-amd64.zip</code>（含 <code>install.ps1</code> / <code>卸载.ps1</code>）。
+Windows 版编译为 <strong>GUI 子系统</strong>，启动不会有控制台黑窗；日志写在
+<code>%APPDATA%\clipshare\clipshare.log</code>。</p>
+
+<h2 id="onboard">3. 第一次配置：一条邀请码</h2>
+<p>第一次配置原本要做两件事：抄 12 位房间码、以及在禁多播的网络里手填对方地址。
+现在它们被压成一条可复制的<strong>邀请码</strong>：</p>
+<pre><code>clipshare1:2mnsn82k6b62@172.26.81.147:47100
+   └ 版本前缀  └ 房间码      └ 对方地址:端口</code></pre>
+
+<figure>
+{{FLOW_SVG}}
+<figcaption>图 1　从「第一台机器」到「新机器加入」的完整流程</figcaption>
+</figure>
+
+<p><strong>第一台机器</strong>（确定房间）：</p>
+<pre><code>clipshare invite       # 直接打印邀请码
+clipshare init         # 或者交互式选择「我是第一台机器」</code></pre>
+
+<p><strong>新机器</strong>（任选一种）：</p>
+<pre><code>clipshare join 'clipshare1:2mnsn82k6b62@172.26.81.147:47100'</code></pre>
+<p>或者打开本地历史页 → 展开「房间与邀请」→ 粘贴邀请码 → 点「加入房间」。
+两种方式都会写入 <code>roomKey</code> 与 <code>seeds</code>，并<strong>自动让正在运行的实例重启</strong>生效。</p>
+
+<div class="note">
+<strong>邀请码等于房间钥匙。</strong>拿到它的人可以读到你们同步的剪贴板内容，也可以写入。
+它只包含房间码和地址、不含设备标识，但仍应按「发给可信同事」的尺度处理。
+</div>
+
+<h2 id="hotkey">4. 日常使用：Ctrl+Alt+V 取用历史</h2>
+<p>按下 <span class="kbd">Ctrl</span>+<span class="kbd">Alt</span>+<span class="kbd">V</span>
+会弹出历史选择窗口：</p>
+<ul>
+  <li><strong>直接打字即过滤</strong>，匹配内容与来源节点名；</li>
+  <li><span class="kbd">↑</span><span class="kbd">↓</span> 移动、<span class="kbd">PgUp</span>/<span class="kbd">PgDn</span> 翻页、
+      <span class="kbd">Enter</span> 取回、<span class="kbd">Esc</span> 取消；</li>
+  <li>鼠标单击某一行＝取回该条；<strong>按住顶部标题条可以拖动窗口</strong>（右侧有一排小点作为提示），
+      位置会被记住，下次弹回同一处；</li>
+  <li>取回只写本机剪贴板，<strong>不会广播给其他机器</strong>（避免把旧内容推给别人）。</li>
+</ul>
+
+<figure>
+<img src="data:image/png;base64,{{PICKER_PNG}}" alt="历史选择窗口截图" width="640">
+<figcaption>图 2　本机实测截图：深色浮层、来源标签、时间、选中行高亮</figcaption>
+</figure>
+
+<p><strong>Linux 的快捷键是怎么来的</strong>：程序启动时自己登记到 GNOME 自定义快捷键
+（追加到你的列表，不覆盖 flameshot 等已有项）；组合键已被别的程序占用时不会抢占，只在日志里提示。
+非 GNOME 桌面不自动登记，请自行把某个组合键绑到 <code>clipshare pick</code>。</p>
+
+<h2 id="webui">5. 本地历史页</h2>
+<p><code>http://127.0.0.1:47101/ui</code>（端口 = 同步端口 + 1）。页面只绑回环地址、无鉴权，
+提供搜索、行内「复制到本机」、清空历史、重启，以及房间与邀请面板。</p>
+
+<figure>
+<img src="data:image/png;base64,{{WEBUI_PNG}}" alt="本地历史页截图" width="820">
+<figcaption>图 3　本机实测截图：搜索框、刷新/重启/清空、行内取回与来源标签</figcaption>
+</figure>
+
+<h2 id="tray">6. 托盘菜单</h2>
+<table>
+<tr><th>菜单项</th><th>作用</th></tr>
+<tr><td>clipshare · 节点名 · 房间码</td><td>标题行（禁用），确认自己在哪个房间</td></tr>
+<tr><td>与 N 台同步中 / 已暂停 / 无可用节点</td><td>状态行（禁用）</td></tr>
+<tr><td>最近 10 条历史</td><td>点击即取回该条（不广播）</td></tr>
+<tr><td>查看全部历史…</td><td>打开本地历史页</td></tr>
+<tr><td>发送当前剪贴板</td><td>强制广播当前内容一次</td></tr>
+<tr><td>暂停同步 / 自动应用远端剪贴板 / 启用 mDNS 发现</td><td>三个开关，改动写回配置</td></tr>
+<tr><td>打开配置目录</td><td>定位 <code>config.json</code> 与历史文件</td></tr>
+<tr><td>重启（重新加载配置）</td><td>改完配置后免杀进程直接生效</td></tr>
+<tr><td>退出</td><td>停止服务</td></tr>
+</table>
+
+<h2 id="how">7. 工作原理</h2>
+
+<figure>
+{{ARCH_SVG}}
+<figcaption>图 4　对等 P2P 架构：每台机器既是服务端也是客户端</figcaption>
+</figure>
+
+<ul>
+  <li><strong>触发</strong>：轮询本机剪贴板（默认 400ms），内容变化才产生条目。</li>
+  <li><strong>去重与回环抑制</strong>：同内容只保留一条；程序自己写入剪贴板的内容会被标记为「已见」，
+      不会被误判成用户复制而再次广播。</li>
+  <li><strong>广播</strong>：并发 POST 给所有同房间节点，失败不重试（剪贴板内容有过期语义，
+      延迟重发反而造成时序错乱）。</li>
+  <li><strong>接收</strong>：校验 <code>Bearer</code> 房间密钥与 <code>X-Room</code> 房间标识，
+      去重命中直接 202 丢弃；时间戳一律用<strong>接收方本地时间</strong>，规避跨机时钟漂移。</li>
+  <li><strong>发现</strong>：mDNS 组播自动发现；禁多播的网络用 <code>seeds</code> 互指并周期性探活。</li>
+</ul>
+
+<h2 id="trouble">8. 排障</h2>
+<table>
+<tr><th>现象</th><th>多半是</th><th>怎么办</th></tr>
+<tr><td>一端能收到、另一端收不到</td><td>收到的那端防火墙没放入站</td>
+    <td>Windows：管理员 PowerShell 执行<br><code>New-NetFirewallRule -DisplayName clipshare -Direction Inbound -Protocol TCP -LocalPort 47100 -Action Allow</code><br>
+    Linux：<code>sudo ufw allow 47100/tcp</code></td></tr>
+<tr><td>日志显示「当前无可用节点」</td><td>节点发现没成功</td>
+    <td>① 两边 <code>roomKey</code> 一致 ② <code>seeds</code> 的 IP:端口正确 ③ 端口入站已放行</td></tr>
+<tr><td>托盘里没有图标</td><td>GNOME 缺 AppIndicator 扩展</td>
+    <td>加 <code>--no-tray</code>，改用历史页；日志里会打印实际地址</td></tr>
+<tr><td>启动报端口被占用</td><td>已有实例或别的程序占了 47100</td>
+    <td>用 <code>--port</code> 换一个，两台一起改</td></tr>
+<tr><td>按了 Ctrl+Alt+V 没反应</td><td>快捷键未登记或被别的程序占用</td>
+    <td><code>journalctl --user -u clipshare -n 20</code> 看「快捷键」那行</td></tr>
+<tr><td>启动后第一次复制没同步</td><td>旧版本缺陷（已修）</td>
+    <td>升级到当前版本</td></tr>
+</table>
+
+<h2 id="security">9. 安全边界</h2>
+<ul>
+  <li><strong>明文传输</strong>：局域网内可被嗅探。房间密钥只解决「谁能接入」，不提供加密。</li>
+  <li><strong>同房间的半信任模型</strong>：任何拿到房间码的人都能读同步流，也能<strong>往你的剪贴板写入内容</strong>。</li>
+  <li><strong>历史默认明文落盘</strong>：<code>history.json</code>；<code>persist: false</code> 可关闭持久化。</li>
+  <li><strong>房间码强度</strong>：首启生成 12 位（约 59 bit）。<code>/v1/health</code> 与 mDNS 会公开它的 sha256 前 12 位，
+      所以短房间码（例如 6 位≈30 bit）可被离线爆破——不要改短。</li>
+  <li><strong>历史页只绑回环</strong>：<code>127.0.0.1</code>，无鉴权，不要改成对外监听。</li>
+</ul>
+
+<h2 id="appendix">10. 附录：命令与配置</h2>
+
+<h3>命令行</h3>
+<table>
+<tr><th>命令</th><th>作用</th></tr>
+<tr><td><code>clipshare</code></td><td>前台启动（托盘常驻）</td></tr>
+<tr><td><code>clipshare --no-tray</code></td><td>无托盘模式，用本地历史页</td></tr>
+<tr><td><code>clipshare invite</code></td><td>打印本机邀请码</td></tr>
+<tr><td><code>clipshare join '&lt;邀请码&gt;'</code></td><td>加入别人的房间并重启生效</td></tr>
+<tr><td><code>clipshare init</code></td><td>交互式首次配置</td></tr>
+<tr><td><code>clipshare pick</code></td><td>弹出历史选择窗口（快捷键调用的就是它）</td></tr>
+<tr><td><code>clipshare --version</code></td><td>版本号（Windows GUI 版无控制台输出）</td></tr>
+</table>
+
+<h3>常用参数</h3>
+<table>
+<tr><th>参数</th><th>说明</th></tr>
+<tr><td><code>--room</code></td><td>房间码，覆盖配置（多台必须一致）</td></tr>
+<tr><td><code>--port</code></td><td>同步端口，默认 47100；历史页用 port+1</td></tr>
+<tr><td><code>--seed</code></td><td>静态节点地址 <code>host:port</code>，可重复；禁多播时用</td></tr>
+<tr><td><code>--mdns=false</code></td><td>关闭组播发现，只连 seeds</td></tr>
+<tr><td><code>--no-persist</code></td><td>历史不落盘</td></tr>
+<tr><td><code>--config-dir</code></td><td>指定配置目录（多实例测试用）</td></tr>
+</table>
+
+<h3>配置文件</h3>
+<p>Linux：<code>~/.config/clipshare/config.json</code>　Windows：<code>%APPDATA%\clipshare\config.json</code></p>
+<pre><code>{
+  "nodeName": "haitang",
+  "deviceId": "ff61d3b8e1f4cd136a4aae56fdde15ac",
+  "roomKey": "2mnsn82k6b62",
+  "port": 47100,
+  "seeds": ["172.26.81.73:47100"],
+  "historyLimit": 500,
+  "itemMaxBytes": 262144,
+  "autoApply": true,
+  "mdns": true,
+  "persist": true,
+  "pollIntervalMs": 400,
+  "noTray": false
+}</code></pre>
+
+<footer>
+clipshare 0.1.0　·　本手册由项目自动生成（<code>make dist</code> → <code>dist/docs/guide.html</code>）；
+图中截图为真实运行界面。
+</footer>
+
+</main>
+</body>
+</html>

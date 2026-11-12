@@ -4,6 +4,10 @@
 
 Ubuntu（X11 / Wayland）与 Windows 双平台，单个二进制、无 cgo、无云服务、零配置发现（mDNS）；多播被禁的网络用静态 seeds 兜底。
 
+> 📖 **图文版使用手册**：装好之后看 `dist/docs/guide.html`（同目录也有 `guide.pdf`），
+> Ubuntu 上装包的路径是 `/usr/share/doc/clipshare/guide.html`，Windows 在开始菜单「clipshare → 使用手册」。
+> 本文件（README.md）保留给工具/AI 读取，内容更偏「契约与实现细节」。
+
 ## 1. 这是什么
 
 两台机器各跑一个进程，房间码对齐后：
