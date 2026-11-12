@@ -189,6 +189,13 @@ func serve(opts *options) error {
 		defer closeUI()
 	}
 
+	// 全局热键：Windows 在进程内注册，其它平台由桌面快捷键拉 `clipshare pick`。
+	// 只在常驻模式启用（--no-tray 多见于无桌面环境）。
+	if !cfg.NoTray {
+		stopHotkey := startHotkey(eng, cfg)
+		defer stopHotkey()
+	}
+
 	logStartup(cfg, dir, uiURL, firstRun)
 
 	return serveUntilExit(eng, cfg, dir, uiURL)
