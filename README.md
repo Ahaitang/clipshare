@@ -131,19 +131,40 @@ HTTP 200, text/html; charset=utf-8, 9897 bytes
 - **Windows**：Win32 自绘窗口（GDI 绘制，系统字体渲染），由常驻进程内的
   `RegisterHotKey` 触发。
 
-**Linux 需要手动绑定快捷键**（桌面环境负责全局热键；脚本见下）：
+**Linux 的快捷键是怎么来的**（重点：不需要你手动配）
+
+GNOME 没有 Win32 `RegisterHotKey` 那样的进程内全局热键接口，全局组合键只能由桌面环境
+绑到一个命令上。所以 clipshare **启动时会自己登记**这条绑定：
+
+- 组合键：`<Control><Alt>v`，命令：`/usr/bin/clipshare pick`
+- 槽位名：`clipshare`（追加到你的自定义快捷键列表里，**不会覆盖** flameshot 等已有项）
+- 已经存在指向本程序的槽位时只修正命令路径（例如从手工拷贝路径改成 `/usr/bin/clipshare`）
+- 组合键已被**别的程序**占用时不会抢占，只在日志里提示，由你决定怎么处理
+
+启动日志里能看到结果（`journalctl --user -u clipshare -n 20`）：
+
+```
+已自动注册快捷键：<Control><Alt>v → /usr/bin/clipshare pick
+已把快捷键命令更新为 "/usr/bin/clipshare pick"（绑定不变）
+提示: 未自动注册快捷键: 组合键 <Control><Alt>v 已被「xxx」占用，未改动
+```
+
+非 GNOME 桌面（KDE/XFCE/...）不做自动登记，请自行在系统设置里把某个组合键绑到
+`clipshare pick`。想自己换组合键，直接在「设置 → 键盘快捷键 → 自定义快捷键」里改
+名为 `clipshare` 的那一项即可（程序不会再覆盖你改过的绑定）。
+
+手动登记（自动注册失败时的等价命令）：
 
 ```bash
+P=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/clipshare/
 gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
-  "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom-clipshare/']"
-P=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom-clipshare/
+  "$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings | sed "s/]$/, '$P']/; s/\['\]/['$P']/")"
 gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$P name 'clipshare 历史'
-gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$P command '/home/<你>/.local/bin/clipshare pick'
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$P command '/usr/bin/clipshare pick'
 gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$P binding '<Control><Alt>v'
 ```
 
 > 注意：GNOME 的自定义快捷键命令**不做 `~` 展开**，必须写绝对路径，否则按了没反应。
-> 若已有其它快捷键配置，请把 `custom-clipshare/` **追加**到列表里而不是整体覆盖。
 
 命令行等价物：`clipshare pick`（需要 clipshare 正在运行；`--limit N` 控制显示条数）。
 

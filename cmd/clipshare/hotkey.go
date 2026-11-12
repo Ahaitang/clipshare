@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"log"
+	"os"
 
 	"clipshare/internal/config"
 	"clipshare/internal/engine"
@@ -20,6 +21,17 @@ import (
 // 只在常驻（托盘）模式下调用：`--no-tray` 通常用于服务器/无桌面环境，
 // 那里注册热键只会产生噪音日志。
 func startHotkey(eng *engine.Engine, cfg *config.Config, cfgDir string) func() {
+	// 先让桌面环境把快捷键绑到本程序的 pick 子命令（Linux/GNOME）。
+	// 这是「装了就能用」的关键一步：这条绑定属于用户级桌面设置，安装包写不了，
+	// 只能在程序启动时自己登记（Windows 走进程内 RegisterHotKey，这里是空操作）。
+	if exe, err := os.Executable(); err == nil {
+		if msg, regErr := hotkey.EnsureDesktopShortcut(exe); regErr != nil {
+			log.Printf("提示: 未自动注册快捷键: %v", regErr)
+		} else if msg != "" {
+			log.Printf("%s", msg)
+		}
+	}
+
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

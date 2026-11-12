@@ -8,6 +8,9 @@ clipshare 已安装。启用方式（当前用户，无需 root）：
     systemctl --user daemon-reload
     systemctl --user enable --now clipshare
 
+启动后会自动把 Ctrl+Alt+V 登记为「剪贴板历史」快捷键（GNOME），
+无需手动配置；日志里会打印登记结果。
+
 如果托盘图标不显示（缺少 AppIndicator 扩展），改用：
 
     clipshare --no-tray        # 打开 http://127.0.0.1:47101/ui
