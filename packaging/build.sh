@@ -37,7 +37,8 @@ python3 packaging/docs/build-guide.py "$ROOT" "$DIST/docs"
 if command -v google-chrome >/dev/null 2>&1; then
     google-chrome --headless=new --disable-gpu --no-pdf-header-footer \
         --print-to-pdf="$DIST/docs/guide.pdf" "file://$DIST/docs/guide.html" >/dev/null 2>&1 \
-        && echo "    guide.pdf 已生成" || echo "    ! PDF 生成失败（HTML 仍可用）"
+        && { python3 packaging/docs/normalize-pdf.py "$DIST/docs/guide.pdf"; echo "    guide.pdf 已生成"; } \
+        || echo "    ! PDF 生成失败（HTML 仍可用）"
 else
     echo "    ! 未安装 google-chrome，跳过 PDF"
 fi
@@ -104,7 +105,10 @@ else
 fi
 rm -rf "$NSISTAGE"
 
-# ---------- Windows zip（免安装版） ----------
+# tar 的可复现参数：排序 + 固定属主/时间，同样的输入得到同样的包
+TAR_FLAGS="--sort=name --owner=0 --group=0 --numeric-owner --mtime=@0"
+
+# ---------- Windows zip + tgz（免安装版） ----------
 echo "==> 打包 Windows"
 WINTREE="$DIST/clipshare-${VERSION}-windows-amd64"
 mkdir -p "$WINTREE"
@@ -115,9 +119,30 @@ cp "$DIST/docs/guide.html" "$WINTREE/"
 [ -f "$DIST/docs/guide.pdf" ] && cp "$DIST/docs/guide.pdf" "$WINTREE/"
 WIN_ZIP="$DIST/clipshare-${VERSION}-windows-amd64.zip"
 ( cd "$DIST" && zip -qr "$WIN_ZIP" "clipshare-${VERSION}-windows-amd64" )
+# 同一个目录再打一份 tgz：有人用 zip，有人习惯 tar.gz
+( cd "$DIST" && tar $TAR_FLAGS -czf "clipshare-${VERSION}-windows-amd64.tar.gz" "clipshare-${VERSION}-windows-amd64" )
 rm -rf "$WINTREE"
-rm -f "$DIST/clipshare" "$DIST/clipshare.exe"
 
+# ---------- tgz 便携包（两个平台） ----------
+# 为什么还要 tgz：deb 需要包管理器和 root，zip 在 Linux 上要额外一步解压；
+# tar.gz 两边都能直接解压，配合包里的 install.sh / install.ps1 就能落地。
+echo "==> 打包 tgz（Linux 便携版）"
+
+LINUX_TREE="$DIST/clipshare-${VERSION}-linux-amd64"
+mkdir -p "$LINUX_TREE"
+cp "$DIST/clipshare" "$LINUX_TREE/"
+cp "$DIST/README.md" "$DIST/README.html" "$LINUX_TREE/"
+cp "$DIST/docs/guide.html" "$LINUX_TREE/"
+[ -f "$DIST/docs/guide.pdf" ] && cp "$DIST/docs/guide.pdf" "$LINUX_TREE/"
+cp packaging/deb/clipshare.service "$LINUX_TREE/"
+cp packaging/linux/install.sh packaging/linux/uninstall.sh "$LINUX_TREE/"
+chmod 0755 "$LINUX_TREE/install.sh" "$LINUX_TREE/uninstall.sh"
+LINUX_TGZ="$DIST/clipshare-${VERSION}-linux-amd64.tar.gz"
+( cd "$DIST" && tar $TAR_FLAGS -czf "$LINUX_TGZ" "clipshare-${VERSION}-linux-amd64" )
+rm -rf "$LINUX_TREE"
+
+
+rm -f "$DIST/clipshare" "$DIST/clipshare.exe"
 # ---------- 校验和 ----------
 echo "==> 生成校验和"
 ( cd "$DIST" && sha256sum "$DEB_NAME" "$(basename "$WIN_ZIP")" clipshare-"$VERSION"-windows-setup.exe README.md README.html > SHA256SUMS 2>/dev/null \
