@@ -13,7 +13,7 @@ BIN_DIR := bin
 # -X main.version 与 cmd/clipshare 里的 `var version` 对齐（--version 读它）。
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build-linux build-windows build-windows-console test vet fmt clean
+.PHONY: all build-linux build-windows build-windows-console test vet fmt clean dist
 
 # 默认目标：先静态检查与测试，再产出两平台二进制。
 all: vet test build-linux build-windows
@@ -47,3 +47,7 @@ fmt:
 
 clean:
 	rm -rf $(BIN_DIR)
+
+# 打安装包（Ubuntu .deb + Windows zip）与两版文档（README.html 给人 / README.md 给 AI）
+dist:
+	./packaging/build.sh $(VERSION)

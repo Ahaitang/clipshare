@@ -1,0 +1,31 @@
+:root { --fg:#1f2328; --muted:#57606a; --bg:#fff; --accent:#0969da; --code-bg:#f6f8fa; --border:#d0d7de; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg:#e6edf3; --muted:#9198a1; --bg:#0d1117; --accent:#4493f8; --code-bg:#161b22; --border:#30363d; }
+}
+* { box-sizing: border-box; }
+body { margin:0; padding:0; background:var(--bg); color:var(--fg);
+  font: 16px/1.7 -apple-system, "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 40px 24px 96px; }
+h1 { font-size: 2em; border-bottom: 1px solid var(--border); padding-bottom: .3em; margin-top: 0; }
+h2 { font-size: 1.45em; margin-top: 2em; border-bottom: 1px solid var(--border); padding-bottom: .25em; }
+h3 { font-size: 1.15em; margin-top: 1.6em; }
+p, ul, ol, table { margin: .8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { background: var(--code-bg); padding: .15em .35em; border-radius: 4px;
+  font: .88em/1.5 ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace; }
+pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto;
+  border: 1px solid var(--border); }
+pre code { background: none; padding: 0; font-size: .86em; }
+blockquote { margin: 1em 0; padding: .2em 1em; color: var(--muted); border-left: 4px solid var(--border); }
+table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--border); padding: 7px 12px; text-align: left; vertical-align: top; }
+th { background: var(--code-bg); font-weight: 600; }
+hr { border: 0; border-top: 1px solid var(--border); margin: 2.4em 0; }
+img { max-width: 100%; }
+.toc { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 18px; margin: 1.5em 0 2em; font-size: .94em; }
+.toc ul { margin: .3em 0; padding-left: 1.2em; }
+.toc-title { font-weight: 600; color: var(--muted); font-size: .85em;
+  letter-spacing: .08em; text-transform: uppercase; }
+header.doc-head { max-width: 860px; margin: 0 auto; padding: 28px 24px 0; color: var(--muted); font-size: .9em; }

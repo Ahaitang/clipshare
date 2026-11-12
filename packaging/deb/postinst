@@ -1,0 +1,19 @@
+#!/bin/sh
+set -e
+if [ "$1" = "configure" ]; then
+    cat <<'MSG'
+
+clipshare 已安装。启用方式（当前用户，无需 root）：
+
+    systemctl --user daemon-reload
+    systemctl --user enable --now clipshare
+
+如果托盘图标不显示（缺少 AppIndicator 扩展），改用：
+
+    clipshare --no-tray        # 打开 http://127.0.0.1:47101/ui
+
+更多说明：/usr/share/doc/clipshare/README.html
+
+MSG
+fi
+exit 0

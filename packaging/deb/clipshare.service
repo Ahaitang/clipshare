@@ -1,0 +1,16 @@
+[Unit]
+Description=clipshare 局域网剪贴板共享（托盘常驻）
+Documentation=file:/usr/share/doc/clipshare/README.html
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/clipshare
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical-session.target
