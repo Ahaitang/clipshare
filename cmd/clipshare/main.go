@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
@@ -53,6 +54,11 @@ func main() {
 
 // run 返回进程退出码，便于单测覆盖参数解析与 --version 路径。
 func run(args []string, stdout, stderr io.Writer) int {
+	// 子命令：clipshare pick（由桌面快捷键拉起，跨进程复用历史页 API）。
+	if len(args) > 0 && args[0] == "pick" {
+		return runPick(args[1:], stdout, stderr)
+	}
+
 	opts, err := parseOptions(args, stdout, stderr)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -178,7 +184,7 @@ func serve(opts *options) error {
 	defer eng.Stop()
 
 	// 本地历史页只绑回环地址（spec §9）；起不来不影响同步。
-	uiURL, closeUI := startWebUI(eng, cfg.Port)
+	uiURL, closeUI := startWebUI(eng, cfg.Port, dir)
 	if closeUI != nil {
 		defer closeUI()
 	}
@@ -247,7 +253,7 @@ func loadConfig(dir string, opts *options) (*config.Config, error) {
 //
 // 只绑回环地址（spec §9：本包不鉴权）。历史页不可用不阻断同步：
 // 失败时只记日志并返回空地址。这里 listen 的是 port+1，绝不碰同步端口。
-func startWebUI(ctrl engine.Controller, syncPort int) (string, func()) {
+func startWebUI(ctrl engine.Controller, syncPort int, cfgDir string) (string, func()) {
 	ln, err := net.Listen("tcp", loopbackAddr(syncPort+uiAddrOffset))
 	if err != nil {
 		// port+1 被占用时退回系统分配的端口，优先保证页面可用。
@@ -270,11 +276,22 @@ func startWebUI(ctrl engine.Controller, syncPort int) (string, func()) {
 		}
 	}()
 
+	// 记录实际监听地址：port+1 被占用时会退回随机端口，
+	// 而 `clipshare pick` 是独立进程，必须知道真实地址。
+	// 记录实际监听地址：port+1 被占用时会退回随机端口，
+	// 而 `clipshare pick` 是独立进程，必须知道真实地址。
+	// 注意：清理只能放在返回的关闭函数里——在这里 defer 会在函数返回时立刻删掉它。
+	addrPath := filepath.Join(cfgDir, uiAddrFile)
+	if writeErr := os.WriteFile(addrPath, []byte(ln.Addr().String()), 0o600); writeErr != nil {
+		log.Printf("警告: 写入历史页地址文件失败（pick 将回退到 port+1）: %v", writeErr)
+	}
+
 	url := "http://" + ln.Addr().String() + "/ui"
 	return url, func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
+		_ = os.Remove(addrPath)
 	}
 }
 
