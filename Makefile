@@ -13,7 +13,7 @@ BIN_DIR := bin
 # -X main.version 与 cmd/clipshare 里的 `var version` 对齐（--version 读它）。
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build-linux build-windows test vet fmt clean
+.PHONY: all build-linux build-windows build-windows-console test vet fmt clean
 
 # 默认目标：先静态检查与测试，再产出两平台二进制。
 all: vet test build-linux build-windows
@@ -22,9 +22,17 @@ build-linux:
 	@mkdir -p $(BIN_DIR)
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(GOARCH) go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/clipshare ./cmd/clipshare
 
+# Windows 版编成 GUI 子系统（-H windowsgui）：托盘常驻程序不该带一个黑乎乎的控制台窗口。
+# 代价是 stdout/stderr 没有控制台可写，所以主程序会把日志同时写到配置目录下的 clipshare.log。
+# 需要看 --help/--version 的输出时用 build-windows-console 那个变体。
 build-windows:
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=windows GOARCH=$(GOARCH) go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/clipshare.exe ./cmd/clipshare
+	CGO_ENABLED=0 GOOS=windows GOARCH=$(GOARCH) go build -trimpath -ldflags "$(LDFLAGS) -H windowsgui" -o $(BIN_DIR)/clipshare.exe ./cmd/clipshare
+
+# 控制台变体：保留 stdout/stderr，用于排障与命令行输出（不带托盘黑窗诉求时使用）。
+build-windows-console:
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=windows GOARCH=$(GOARCH) go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/clipshare-console.exe ./cmd/clipshare
 
 # -race 只能在本机执行，交叉编译的产物不参与测试。
 test:

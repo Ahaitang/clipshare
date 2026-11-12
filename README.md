@@ -147,6 +147,30 @@ gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$P 
 
 命令行等价物：`clipshare pick`（需要 clipshare 正在运行；`--limit N` 控制显示条数）。
 
+### Windows 上没有黑窗口
+
+Windows 版编成 **GUI 子系统**（`-H windowsgui`），双击或用计划任务启动都**不会弹出控制台黑窗**。
+代价是它没有标准输出，所以日志会同时写到配置目录下的文件：
+
+```
+%APPDATA%\clipshare\clipshare.log
+```
+
+排障时直接看这个文件（超过 2MB 会在下次启动时轮转成 `.log.1`）。Linux 侧同样会写
+`~/.config/clipshare/clipshare.log`，另外 systemd 还收了 journal：`journalctl --user -u clipshare -f`。
+
+需要 `--help` / `--version` 这类命令行输出时，用控制台变体：
+
+```bash
+make build-windows-console   # → bin/clipshare-console.exe（会开控制台，便于排障）
+```
+
+开机自启（Windows）用的是登录触发的计划任务 `clipshare-autostart`，可直接重置：
+
+```powershell
+schtasks /create /tn clipshare-autostart /tr '"C:\Users\<你>\clipshare.exe" --port 47100' /sc onlogon /it /f
+```
+
 
 ## 4. 禁多播网络怎么办（企业 Wi-Fi / 隔离 VLAN）
 

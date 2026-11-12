@@ -151,6 +151,11 @@ func serve(opts *options) error {
 		return fmt.Errorf("创建配置目录 %s 失败: %w", dir, err)
 	}
 
+	// 日志落文件：Windows GUI 子系统没有控制台可写，出问题时只能靠这个文件。
+	// 把它放在配置目录里，和 config.json/history.json 在一起，便于一起打包发给别人。
+	closeLog := setupFileLog(dir)
+	defer closeLog()
+
 	firstRun := !fileExists(config.Path(dir))
 	cfg, err := loadConfig(dir, opts)
 	if err != nil {
