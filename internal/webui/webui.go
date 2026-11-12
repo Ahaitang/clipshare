@@ -30,14 +30,22 @@ var indexHTML []byte
 //
 // entries 一次返回全部历史（默认上限 500 条），搜索与排序都在页面本地完成：
 // 这个量级不需要服务端分页。
-func Handler(ctrl engine.Controller) http.Handler {
-	api := &api{ctrl: ctrl}
+// Options 是页面的可选能力。
+type Options struct {
+	// Restart 是「重启」按钮的回调（nil 时按钮置灰并说明不可用）。
+	// 由 cmd 层注入：重启意味着退出并重新拉起进程，属于应用生命周期。
+	Restart func()
+}
+
+func Handler(ctrl engine.Controller, opts Options) http.Handler {
+	api := &api{ctrl: ctrl, opts: opts}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /ui", serveIndex)
 	mux.HandleFunc("GET /ui/api/entries", api.listEntries)
 	mux.HandleFunc("POST /ui/api/pull", api.pull)
 	mux.HandleFunc("POST /ui/api/clear", api.clear)
+	mux.HandleFunc("POST /ui/api/restart", api.restart)
 	// 顺手让根路径跳到页面，免得用户从端口地址摸进来看到 404。
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui", http.StatusFound)
@@ -57,6 +65,7 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
 
 type api struct {
 	ctrl engine.Controller
+	opts Options
 }
 
 func (a *api) listEntries(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +104,24 @@ func (a *api) clear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// restart 触发一次重启：先回 202，再在后台请求重启。
+//
+// 顺序很重要——如果先重启再回响应，客户端多半拿不到 202（进程已经没了），
+// 页面会显示「重启失败」这种误导性错误。
+func (a *api) restart(w http.ResponseWriter, r *http.Request) {
+	if a.opts.Restart == nil {
+		writeError(w, http.StatusNotImplemented, "当前以 --no-tray 或受限模式运行，无法重启")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusAccepted)
+	_, _ = w.Write([]byte(`{"status":"restarting"}`))
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	go a.opts.Restart()
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

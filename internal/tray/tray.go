@@ -25,6 +25,9 @@ import (
 type Options struct {
 	// UIAddr 是本地历史页地址，如 http://127.0.0.1:47100/ui。
 	UIAddr string
+	// Restart 是「重启」菜单项的回调（nil 时该菜单项置灰）。
+	// 由 cmd 层注入：重启意味着退出当前进程并重新拉起，属于应用生命周期，不该由托盘自己决定。
+	Restart func()
 	// ConfigDir 是「打开配置目录」的目标；为空时该项置灰。
 	ConfigDir string
 	// Version 显示在托盘提示（tooltip）里。
@@ -78,6 +81,7 @@ type tray struct {
 	auto    *systray.MenuItem
 	mdns    *systray.MenuItem
 	config  *systray.MenuItem
+	restart *systray.MenuItem
 	quit    *systray.MenuItem
 }
 
@@ -129,9 +133,27 @@ func (t *tray) buildMenu() {
 	} else {
 		t.config.Click(func() { go t.openConfigDir() })
 	}
+	t.restart = systray.AddMenuItem("重启（重新加载配置）", "停止后立即重新启动 clipshare")
+	if t.opts.Restart == nil {
+		t.restart.Disable()
+	} else {
+		t.restart.Click(func() { go t.doRestart() })
+	}
+
 	t.quit = systray.AddMenuItem("退出", "退出 clipshare")
 	t.quit.Click(func() { systray.Quit() })
 }
+
+// doRestart 请求重启并让托盘循环退出：退出走正常路径，engine 会被停掉、
+// 历史会落盘，cmd 层随后用同一套参数重新拉起进程。
+func (t *tray) doRestart() {
+	t.opts.Restart()
+	systray.Quit()
+}
+
+// Quit 让托盘循环退出。供 cmd 层在「收到重启请求」时调用——
+// 那条路径不经过托盘菜单，但同样需要把阻塞在 systray.Run 里的主 goroutine 叫醒。
+func Quit() { systray.Quit() }
 
 // loop 每 refreshInterval 轮询一次；refresh 内部逐项 diff，
 // 没变化就不碰任何菜单项（避免无谓的 D-Bus 通知与闪烁）。

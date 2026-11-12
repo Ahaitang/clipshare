@@ -70,6 +70,7 @@ button.copy{font-size:12px;padding:5px 10px;white-space:nowrap;align-self:start}
       <input id="q" type="search" placeholder="搜索内容或来源…" autocomplete="off" spellcheck="false" aria-label="搜索历史">
       <span id="count" class="count"></span>
       <button id="refresh" type="button" title="重新读取（快捷键 /）">刷新</button>
+      <button id="restart" type="button" title="重启 clipshare（重新加载配置、重新注册快捷键）">重启</button>
       <button id="clear" type="button" class="danger">清空历史</button>
     </div>
   </div>
@@ -106,6 +107,10 @@ const api = {
   async clear() {
     const r = await fetch('/ui/api/clear', { method: 'POST' });
     if (!r.ok) throw new Error(await message(r, '清空失败'));
+  },
+  async restart() {
+    const r = await fetch('/ui/api/restart', { method: 'POST' });
+    if (!r.ok) throw new Error(await message(r, '重启失败'));
   },
 };
 
@@ -210,6 +215,19 @@ function toast(msg, bad) {
 }
 
 $('#q').addEventListener('input', (ev) => { state.q = ev.target.value; render(); });
+$('#restart').addEventListener('click', async () => {
+  $('#restart').disabled = true;
+  try {
+    await api.restart();
+    toast('正在重启，稍候自动刷新…');
+    // 重启期间页面会短暂连不上；给它 ~2.5s 再自动刷新，省得用户以为坏了
+    setTimeout(() => location.reload(), 2500);
+  } catch (e) {
+    $('#restart').disabled = false;
+    toast(e.message, true);
+  }
+});
+
 $('#refresh').addEventListener('click', load);
 $('#clear').addEventListener('click', () => { $('#confirm').hidden = false; $('#clear').disabled = true; });
 $('#cancel').addEventListener('click', () => { $('#confirm').hidden = true; $('#clear').disabled = false; });

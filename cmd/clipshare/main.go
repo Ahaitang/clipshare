@@ -71,9 +71,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "clipshare %s\n", version)
 		return 0
 	}
+	if opts.startupDelay > 0 {
+		log.Printf("按 -startup-delay=%s 延迟启动（等待旧进程释放端口）", opts.startupDelay)
+		time.Sleep(opts.startupDelay)
+	}
 	if err := serve(opts); err != nil {
 		fmt.Fprintf(stderr, "clipshare: %v\n", err)
 		return 1
+	}
+	// 重启请求：此时 serve 的 defer 已经全部跑完（engine 停、历史落盘、UI 关闭），
+	// 端口也释放了，可以安全地拉起新实例。
+	if restartRequested() {
+		if err := relaunch(); err != nil {
+			// GUI 子系统没有 stderr，必须同时写日志文件，否则用户完全看不到原因。
+			log.Printf("重启失败: %v", err)
+			fmt.Fprintf(stderr, "clipshare: 重启失败: %v\n", err)
+			return 1
+		}
+		return 0
 	}
 	return 0
 }
@@ -90,6 +105,10 @@ type options struct {
 	mdnsSet     bool // 是否显式指定过 --mdns（决定要不要覆盖配置文件）
 	configDir   string
 	showVersion bool
+	// startupDelay 让进程启动后先等一会儿再监听端口。
+	// 只用于 Windows 的重启：那边的重启方式是「拉起新进程、父进程退出」，
+	// 新进程必须等旧进程释放 47100，否则绑定失败直接退出。
+	startupDelay time.Duration
 }
 
 // multiFlag 支持重复出现的 --seed。
@@ -124,6 +143,7 @@ func parseOptions(args []string, stdout, stderr io.Writer) (*options, error) {
 	fs.BoolVar(&opts.mdns, "mdns", true, "是否启用 mDNS 自动发现；用 --mdns=false 关闭，改为只连 seeds")
 	fs.StringVar(&opts.configDir, "config-dir", "", "配置目录（默认取系统用户配置目录下的 clipshare/）")
 	fs.BoolVar(&opts.showVersion, "version", false, "打印版本号后退出")
+	fs.DurationVar(&opts.startupDelay, "startup-delay", 0, "内部用：启动后延迟指定时间再监听端口（重启时避免与旧进程抢端口）")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -153,8 +173,10 @@ func serve(opts *options) error {
 
 	// 日志落文件：Windows GUI 子系统没有控制台可写，出问题时只能靠这个文件。
 	// 把它放在配置目录里，和 config.json/history.json 在一起，便于一起打包发给别人。
-	closeLog := setupFileLog(dir)
-	defer closeLog()
+	// 故意不 defer 关闭：重启路径里 run() 会在 serve() 返回**之后**才重新拉起进程，
+	// 那时如果文件已关闭，重启日志（包括失败原因）就全丢了——实测 Windows 上正是
+	// 因为这一点看不到任何线索。守护进程的日志句柄活到进程退出即可，由操作系统回收。
+	_ = setupFileLog(dir)
 
 	firstRun := !fileExists(config.Path(dir))
 	cfg, err := loadConfig(dir, opts)
@@ -277,7 +299,7 @@ func startWebUI(ctrl engine.Controller, syncPort int, cfgDir string) (string, fu
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/", webui.Handler(ctrl))
+	mux.Handle("/", webui.Handler(ctrl, webui.Options{Restart: requestRestart}))
 	srv := &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -326,8 +348,12 @@ func serveUntilExit(eng *engine.Engine, cfg *config.Config, cfgDir, uiURL string
 		} else {
 			log.Printf("已禁用托盘（--no-tray），Ctrl+C 退出")
 		}
-		sig := <-sigCh
-		log.Printf("收到信号 %v，开始退出…", sig)
+		select {
+		case sig := <-sigCh:
+			log.Printf("收到信号 %v，开始退出…", sig)
+		case <-restartCh:
+			log.Printf("收到重启请求，正在退出以便重新拉起…")
+		}
 		return nil // 返回后由 serve 的 defer 停止 engine（历史随之落盘）
 	}
 
@@ -335,11 +361,18 @@ func serveUntilExit(eng *engine.Engine, cfg *config.Config, cfgDir, uiURL string
 	// Windows 上会建出没有消息循环的幽灵图标。信号退出必须由旁路线程收尾，
 	// 因为主 goroutine 此刻卡在 tray.Run 里。
 	go func() {
-		sig := <-sigCh
-		log.Printf("收到信号 %v，开始退出…", sig)
-		// os.Exit 会跳过 defer，所以这里显式停 engine 让历史落盘。
-		eng.Stop()
-		os.Exit(0)
+		select {
+		case sig := <-sigCh:
+			log.Printf("收到信号 %v，开始退出…", sig)
+			// os.Exit 会跳过 defer，所以这里显式停 engine 让历史落盘。
+			eng.Stop()
+			os.Exit(0)
+		case <-restartCh:
+			// 重启也要走「正常退出」这条路：让 tray.Run 返回，serve 的 defer
+			// 依次把 engine 停掉、历史落盘、UI 端口释放，再由 run() 重新拉起。
+			log.Printf("收到重启请求，正在退出以便重新拉起…")
+			tray.Quit()
+		}
 	}()
 
 	if runTray(eng, cfgDir, uiURL) {
@@ -347,8 +380,14 @@ func serveUntilExit(eng *engine.Engine, cfg *config.Config, cfgDir, uiURL string
 	}
 
 	// 托盘起不来：降级为无托盘模式，继续等信号（spec §10）。
-	sig := <-sigCh
-	log.Printf("收到信号 %v，开始退出…", sig)
+	// 注意这里同样要接受「重启」请求——降级模式下用户仍可能从历史页点重启，
+	// 只听信号会让重启按钮石沉大海（实测踩到，Windows 无桌面会话时正是这种形态）。
+	select {
+	case sig := <-sigCh:
+		log.Printf("收到信号 %v，开始退出…", sig)
+	case <-restartCh:
+		log.Printf("收到重启请求，正在退出以便重新拉起…")
+	}
 	return nil
 }
 
@@ -366,6 +405,7 @@ func runTray(eng *engine.Engine, cfgDir, uiURL string) (ok bool) {
 	}()
 	tray.Run(eng, tray.Options{
 		UIAddr:    uiURL,
+		Restart:   requestRestart,
 		ConfigDir: cfgDir,
 		Version:   version,
 	})

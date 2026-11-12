@@ -49,6 +49,15 @@ Section "clipshare" SecMain
   ; HKLM 写入会被重定向到 Wow6432Node —— 那里的 Run 项 Windows 根本不执行，
   ; 自启会静默失效（实测踩到：装完 Run 项查不到）。
   SetRegView 64
+
+  ; 升级场景：必须先把正在运行的实例停掉，否则
+  ;   ① clipshare.exe 被占用，File 写不进去（升级失败）
+  ;   ② 旧进程占着 47100，新进程绑不上端口直接退出（看起来「装完没反应」）
+  ; 这两条都是实测升级时才会暴露的，全新安装碰不到。
+  DetailPrint "停止正在运行的 clipshare ..."
+  nsExec::ExecToLog 'taskkill /IM clipshare.exe /F'
+  Sleep 1200
+
   SetOutPath "$INSTDIR"
   File "clipshare.exe"
   File "README.html"

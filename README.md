@@ -177,6 +177,22 @@ gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$P 
 rm ~/.config/clipshare/picker.pos
 ```
 
+### 重启（不用杀进程）
+
+改完 `config.json`、换了房间码、或想让程序重新注册快捷键之后，两处都能一键重启：
+
+- **托盘菜单**：`重启（重新加载配置）`
+- **本地历史页**：右上角「重启」按钮，对应 `POST /ui/api/restart`（返回 202，页面随后自动刷新）
+
+重启是「正常退出 → 用同一套参数重新拉起」：先把剪贴板轮询停掉、历史落盘、历史页端口释放，
+再启动新实例，所以不会丢历史，也不会出现新进程抢不到端口的竞态。
+
+- Linux 用 `exec` 替换进程映像，**PID 不变**（systemd 的 MainPID 不会抖，日志里会看到
+  `收到重启请求` → `[engine] 已停止` → 新的启动序列）。
+- Windows 不能 exec，改为隐藏窗口延迟 2 秒启动新实例（必须等旧进程释放 `47100` 端口），
+  所以会有约 2 秒空窗。
+
+
 ### Windows 上没有黑窗口
 
 Windows 版编成 **GUI 子系统**（`-H windowsgui`），双击或用计划任务启动都**不会弹出控制台黑窗**。

@@ -84,7 +84,7 @@ func do(t *testing.T, ctrl engine.Controller, method, target, body string) *http
 		req = httptest.NewRequest(method, target, strings.NewReader(body))
 	}
 	rec := httptest.NewRecorder()
-	Handler(ctrl).ServeHTTP(rec, req)
+	Handler(ctrl, Options{}).ServeHTTP(rec, req)
 	return rec
 }
 

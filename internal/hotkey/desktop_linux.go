@@ -56,7 +56,9 @@ func EnsureDesktopShortcut(exePath string) (string, error) {
 		if !isOurCommand(cmdVal) {
 			continue
 		}
-		if strings.TrimSpace(cmdVal) != command {
+		// gsettings get 的输出带单引号（'<路径> pick'），比较前必须去掉，
+		// 否则每次启动都判成「路径变了」而重复写一遍（实测踩到）。
+		if unquote(cmdVal) != command {
 			if err := gsettingsSet(keybindingSchema+":"+slot, "command", command); err != nil {
 				return "", fmt.Errorf("更新快捷键命令失败: %w", err)
 			}
@@ -70,7 +72,7 @@ func EnsureDesktopShortcut(exePath string) (string, error) {
 		binding, _ := gsettingsGet(keybindingSchema+":"+slot, "binding")
 		if normalizeAccel(binding) == normalizeAccel(targetBinding) {
 			name, _ := gsettingsGet(keybindingSchema+":"+slot, "name")
-			return "", fmt.Errorf("组合键 %s 已被「%s」占用，未改动；请手动改绑或在设置里调整", targetBinding, strings.Trim(name, "'"))
+			return "", fmt.Errorf("组合键 %s 已被「%s」占用，未改动；请手动改绑或在设置里调整", targetBinding, unquote(name))
 		}
 	}
 
@@ -92,9 +94,20 @@ func EnsureDesktopShortcut(exePath string) (string, error) {
 	return fmt.Sprintf("已自动注册快捷键：%s → %s", targetBinding, command), nil
 }
 
+// unquote 去掉 gsettings 输出外层的单/双引号。
+func unquote(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 {
+		if (s[0] == '\'' && s[len(s)-1] == '\'') || (s[0] == '"' && s[len(s)-1] == '"') {
+			return s[1 : len(s)-1]
+		}
+	}
+	return s
+}
+
 // isOurCommand 判断某个槽位的命令是不是本程序的 pick 子命令。
 func isOurCommand(cmd string) bool {
-	cmd = strings.Trim(strings.TrimSpace(cmd), `'"`)
+	cmd = unquote(cmd)
 	if !strings.HasSuffix(cmd, "pick") {
 		return false
 	}
