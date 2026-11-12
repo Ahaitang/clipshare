@@ -363,8 +363,11 @@ func showX11(items []Item, opts Options) (Result, error) {
 		// 抓不到键盘就不该留下一个「点不动的窗口」：直接降级到 zenity。
 		return Result{}, fmt.Errorf("%w: 抢占键盘失败: %v", errX11Unavailable, err)
 	}
-	// 抓指针才能收到点击与滚轮；失败不致命（键盘仍可用）。
-	_, _ = xproto.GrabPointer(conn, false, win, 0,
+	// 抓指针才能收到点击、滚轮与拖拽。事件掩码必须显式给出：传 0 表示「不要指针事件」，
+	// 那样点击和拖拽都不会送到本窗口（实测踩过），失败不致命（键盘仍可用）。
+	const pointerEvents = xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease |
+		xproto.EventMaskPointerMotion
+	_, _ = xproto.GrabPointer(conn, false, win, pointerEvents,
 		xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.AtomNone, xproto.AtomNone,
 		xproto.TimeCurrentTime).Reply()
 
@@ -377,6 +380,13 @@ func showX11(items []Item, opts Options) (Result, error) {
 
 	view := newPickView(items, opts)
 	keymap := newKeymap(conn, setup)
+
+	// 拖拽状态：override-redirect 窗口不归窗口管理器管，位置得自己算。
+	// 用户按住标题区拖动时，按「按下时的窗口位置 + 指针位移」重设窗口坐标。
+	curX, curY := x, y
+	dragging := false
+	var dragRootX, dragRootY int16
+	var dragWinX, dragWinY int16
 
 	// 渲染失败（例如服务器不支持所需像素格式）必须降级到 zenity，
 	// 而不是留一个纯背景色的空白窗口让用户对着发呆。
@@ -456,6 +466,13 @@ func showX11(items []Item, opts Options) (Result, error) {
 			_ = drawFrame()
 		case xproto.ButtonPressEvent:
 			yy := int(e.EventY)
+			if e.Detail == 1 && yy < pickTitleH {
+				// 按在标题区 = 准备拖动窗口
+				dragging = true
+				dragRootX, dragRootY = e.RootX, e.RootY
+				dragWinX, dragWinY = curX, curY
+				continue
+			}
 			if e.Detail == 4 { // 滚轮上
 				view.move(-1)
 				_ = drawFrame()
@@ -469,6 +486,16 @@ func showX11(items []Item, opts Options) (Result, error) {
 			if idx := view.rowAt(yy); idx >= 0 {
 				return Result{ID: view.shown[idx].ID, OK: true}, nil
 			}
+		case xproto.MotionNotifyEvent:
+			if !dragging {
+				continue
+			}
+			curX = dragWinX + (e.RootX - dragRootX)
+			curY = dragWinY + (e.RootY - dragRootY)
+			_ = xproto.ConfigureWindowChecked(conn, win, xproto.ConfigWindowX|xproto.ConfigWindowY,
+				[]uint32{uint32(uint16(curX)), uint32(uint16(curY))}).Check()
+		case xproto.ButtonReleaseEvent:
+			dragging = false
 		}
 	}
 }
