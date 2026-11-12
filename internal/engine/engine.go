@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"strings"
 	stdsync "sync"
+	"sync/atomic"
 	"time"
 
 	"clipshare/internal/clip"
@@ -106,6 +107,10 @@ type Engine struct {
 
 	finderMu stdsync.Mutex
 	finder   *discovery.Finder
+
+	// lastProbeNano 是上次触发即时重探的时刻（UnixNano），用原子量做节流；
+	// 不能用 stdlib sync：本文件已经把 internal/sync 导入为 sync。
+	lastProbeNano atomic.Int64
 
 	// finderRebuildMu 串行化「停止旧 Finder + 启动新 Finder」，
 	// 避免并发 SetMDNS 交错执行时旧 Finder 的 goroutine/mDNS 连接泄漏。
@@ -463,6 +468,26 @@ func (e *Engine) applyLocal(content string) error {
 	return nil
 }
 
+// probeDiscovery 触发一次即时的 peer 重探，带 2 秒节流。
+//
+// 只在「这一轮广播一个节点都没有」时调用：把「对端重启 → 最长 30 秒静默失效」
+// 缩短为「下一次复制就能重新连上」。节流是为了避免用户在断网时连续复制导致的
+// 探活风暴（每次探活是一次 HTTP 往返）。
+func (e *Engine) probeDiscovery() {
+	if e.finder == nil {
+		return
+	}
+	now := time.Now().UnixNano()
+	last := e.lastProbeNano.Load()
+	if now-last < int64(2*time.Second) {
+		return
+	}
+	if !e.lastProbeNano.CompareAndSwap(last, now) {
+		return // 已有其它 goroutine 触发，避免探活风暴
+	}
+	e.finder.ProbeNow()
+}
+
 // broadcast 扇出到所有 peers；失败只记日志，不重试（S7）。
 func (e *Engine) broadcast(entry model.Entry) {
 	if e.bcast == nil {
@@ -470,7 +495,10 @@ func (e *Engine) broadcast(entry model.Entry) {
 	}
 	results := e.bcast.Broadcast(entry)
 	if len(results) == 0 {
-		e.logf("[engine] 广播条目 %s：当前无可用节点", entry.ID)
+		// 没有任何 peer 时立刻让发现层重探一次：否则对端重启后要等满一个探活周期
+		// （默认 30s）才会被重新发现，这段时间用户复制的内容会静默不同步。
+		e.probeDiscovery()
+		e.logf("[engine] 广播条目 %s：当前无可用节点（已触发一次节点重探）", entry.ID)
 		return
 	}
 	failures := sync.Failures(results)

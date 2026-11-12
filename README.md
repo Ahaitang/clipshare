@@ -118,6 +118,36 @@ HTTP 200, text/html; charset=utf-8, 9897 bytes
 >
 > ⚠️ **在同一台机器上跑多个实例做联调时注意端口错位**：实例 A 用 `--port 47901` 时，它的历史页会占用 `47902`，正好撞上实例 B 的同步端口——此时**先启动的实例会赢，后启动的那个报端口占用并退出 1**。联调请把端口隔开（例如 `--port 47901` 与 `--port 47911`），或给后启动的实例加 `--no-tray` 时留意日志里的实际历史页地址。
 
+### 用快捷键取用历史（Ctrl+Alt+V）
+
+按下 `Ctrl+Alt+V` 会弹出一个选择窗口，`↑↓` 移动、**直接打字即过滤**、`Enter` 取回、`Esc` 取消。
+取回走的是「只写本机剪贴板、不广播」的语义——不会把你历史里的旧内容再推给别人。
+
+窗口是各平台原生自绘：
+
+- **Linux**：X11 自绘窗口（`xgb` + 系统 CJK 字体栅格化，无 GTK/Qt 依赖）。找不到可用字体、
+  连不上 X、或抢不到键盘时**自动降级到 `zenity`**（GNOME 自带），宁可换外观也不留一个
+  点不动的空白窗口。
+- **Windows**：Win32 自绘窗口（GDI 绘制，系统字体渲染），由常驻进程内的
+  `RegisterHotKey` 触发。
+
+**Linux 需要手动绑定快捷键**（桌面环境负责全局热键；脚本见下）：
+
+```bash
+gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
+  "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom-clipshare/']"
+P=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom-clipshare/
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$P name 'clipshare 历史'
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$P command '/home/<你>/.local/bin/clipshare pick'
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$P binding '<Control><Alt>v'
+```
+
+> 注意：GNOME 的自定义快捷键命令**不做 `~` 展开**，必须写绝对路径，否则按了没反应。
+> 若已有其它快捷键配置，请把 `custom-clipshare/` **追加**到列表里而不是整体覆盖。
+
+命令行等价物：`clipshare pick`（需要 clipshare 正在运行；`--limit N` 控制显示条数）。
+
+
 ## 4. 禁多播网络怎么办（企业 Wi-Fi / 隔离 VLAN）
 
 mDNS 依赖多播。多播被禁时，**唯一可用路径**是关掉 mDNS、改用手填的 seeds：在各台机器的 `config.json` 里改这两个字段（其余字段保持原样）：
