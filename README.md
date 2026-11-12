@@ -122,6 +122,22 @@ HTTP 200, text/html; charset=utf-8, 9897 bytes
 >
 > ⚠️ **在同一台机器上跑多个实例做联调时注意端口错位**：实例 A 用 `--port 47901` 时，它的历史页会占用 `47902`，正好撞上实例 B 的同步端口——此时**先启动的实例会赢，后启动的那个报端口占用并退出 1**。联调请把端口隔开（例如 `--port 47901` 与 `--port 47911`），或给后启动的实例加 `--no-tray` 时留意日志里的实际历史页地址。
 
+### 便携包（tgz / zip，不经过包管理器）
+
+不想用 deb、或者要装到自定义前缀时用 tgz：
+
+```bash
+# Linux：默认装到 /usr/local（需要 sudo）；也可以 PREFIX=$HOME/.local 免 root
+tar xzf clipshare-0.1.0-linux-amd64.tar.gz
+cd clipshare-0.1.0-linux-amd64
+./install.sh                    # 或：PREFIX=$HOME/.local ./install.sh
+./uninstall.sh                  # 卸载（只删程序，保留 ~/.config/clipshare）
+```
+
+也可以完全不安装，直接跑解压出来的 `./clipshare`。
+Windows 的 tgz 与 zip 内容一致（`clipshare.exe` + `install.ps1` + 手册），
+解开后双击 `安装.bat` 即可（会请求管理员权限以放行防火墙）。
+
 ### 第一次配置：三条路，最省事的是「邀请码」
 
 一台从没配置过的机器，装完之后只要**拿到一条邀请码**就能接进房间。邀请码把

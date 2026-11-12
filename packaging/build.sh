@@ -145,8 +145,14 @@ rm -rf "$LINUX_TREE"
 rm -f "$DIST/clipshare" "$DIST/clipshare.exe"
 # ---------- 校验和 ----------
 echo "==> 生成校验和"
-( cd "$DIST" && sha256sum "$DEB_NAME" "$(basename "$WIN_ZIP")" clipshare-"$VERSION"-windows-setup.exe README.md README.html > SHA256SUMS 2>/dev/null \
-    || sha256sum "$DEB_NAME" "$(basename "$WIN_ZIP")" README.md README.html > SHA256SUMS )
+( cd "$DIST" && : > SHA256SUMS
+  for f in "$DEB_NAME" "$(basename "$WIN_ZIP")" \
+           "clipshare-${VERSION}-windows-setup.exe" \
+           "clipshare-${VERSION}-linux-amd64.tar.gz" \
+           "clipshare-${VERSION}-windows-amd64.tar.gz" \
+           README.md README.html docs/guide.html docs/guide.pdf; do
+      [ -f "$f" ] && sha256sum "$f" >> SHA256SUMS
+  done )
 
 echo
 echo "完成，产物在 $DIST："
