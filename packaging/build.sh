@@ -84,8 +84,11 @@ Description: 局域网剪贴板共享（对称 P2P，托盘常驻）
  明文传输，安全边界见文档「安全边界」一节。
 CTRL
 
+# 固定 mtime：否则 deb 里每个文件的 tar 时间戳随构建时间变化，包就不可复现
+find "$DEBROOT" -exec touch -d @0 {} + 2>/dev/null || touch -t 197001010000 "$DEBROOT"
+
 DEB_NAME="clipshare_${VERSION}_${ARCH}.deb"
-dpkg-deb --build --root-owner-group "$DEBROOT" "$DIST/$DEB_NAME" >/dev/null
+SOURCE_DATE_EPOCH=0 dpkg-deb --build --root-owner-group "$DEBROOT" "$DIST/$DEB_NAME" >/dev/null
 rm -rf "$DEBROOT"
 
 # ---------- Windows setup.exe（NSIS） ----------
@@ -118,7 +121,9 @@ cp "$DIST/README.md" "$DIST/README.html" "$WINTREE/"
 cp "$DIST/docs/guide.html" "$WINTREE/"
 [ -f "$DIST/docs/guide.pdf" ] && cp "$DIST/docs/guide.pdf" "$WINTREE/"
 WIN_ZIP="$DIST/clipshare-${VERSION}-windows-amd64.zip"
-( cd "$DIST" && zip -qr "$WIN_ZIP" "clipshare-${VERSION}-windows-amd64" )
+# zip 会把每个文件的 mtime 与额外属性写进去；固定时间 + -X 才能得到可复现的包
+find "$WINTREE" -exec touch -d @0 {} +
+( cd "$DIST" && zip -qrX "$WIN_ZIP" "clipshare-${VERSION}-windows-amd64" )
 # 同一个目录再打一份 tgz：有人用 zip，有人习惯 tar.gz
 ( cd "$DIST" && tar $TAR_FLAGS -czf "clipshare-${VERSION}-windows-amd64.tar.gz" "clipshare-${VERSION}-windows-amd64" )
 rm -rf "$WINTREE"
