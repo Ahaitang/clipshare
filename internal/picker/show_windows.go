@@ -33,8 +33,9 @@ func show(items []Item, opts Options) (Result, error) {
 	defer runtime.UnlockOSThread()
 
 	w := &winWindow{
-		ui:    newUIState(items),
-		title: uiTitle(opts),
+		ui:      newUIState(items),
+		title:   uiTitle(opts),
+		posFile: opts.PosFile,
 	}
 
 	// 先抢占「当前窗口」这个唯一名额：进程内同一时刻只允许一个选择窗口。
@@ -83,6 +84,11 @@ const (
 	wmMouseWheel  = 0x020A
 
 	idcArrow = 32512 // IDC_ARROW：MAKEINTRESOURCE(32512)
+
+	// 拖动无边框窗口的标准做法：伪造一次「按住标题栏」的非客户区消息，
+	// 交给系统完成移动，比自己在 WM_MOUSEMOVE 里算坐标更稳（含吸附/多屏换算）。
+	wmNCLButtonDown = 0x00A1
+	htCaption       = 2
 
 	// 虚拟键码（WM_KEYDOWN 的 wParam）。
 	vkBack   = 0x08
@@ -211,6 +217,9 @@ var (
 	procGetDC               = user32.NewProc("GetDC")
 	procReleaseDC           = user32.NewProc("ReleaseDC")
 	procGetSystemMetrics    = user32.NewProc("GetSystemMetrics")
+	procGetWindowRect       = user32.NewProc("GetWindowRect")
+	procReleaseCapture      = user32.NewProc("ReleaseCapture")
+	procSendMessageW        = user32.NewProc("SendMessageW")
 	procMessageBeep         = user32.NewProc("MessageBeep")
 
 	procGetModuleHandleW   = kernel32.NewProc("GetModuleHandleW")
@@ -271,6 +280,7 @@ type winWindow struct {
 	hwnd      uintptr
 	ui        *uiState
 	title     string
+	posFile   string // 记住窗口位置的文件（空 = 不记忆）
 	result    Result
 	closed    bool
 	wheelAcc  int // 滚轮累积量：高精度滚轮/触控板一次可能只给 30、60
@@ -350,6 +360,10 @@ func (w *winWindow) createWindow() error {
 	sh, _, _ := procGetSystemMetrics.Call(smCYScreen)
 	x := (int(sw) - uiWidth) / 2
 	y := (int(sh) - uiHeight) / 2
+	// 上次拖动记住的位置优先；夹到屏幕内，避免换显示器/改分辨率后弹到看不见的地方。
+	if px, py, ok := LoadPos(w.posFile); ok {
+		x, y = ClampPos(px, py, int(sw), int(sh), uiWidth, uiHeight)
+	}
 
 	hwnd, _, callErr := procCreateWindowExW.Call(
 		wsExTopmost|wsExToolWindow,
@@ -585,6 +599,12 @@ func (w *winWindow) onChar(unit uint16) {
 func (w *winWindow) onClick(lparam uintptr) {
 	// GET_Y_LPARAM：lParam 的高 16 位是客户区 y（有符号 16 位）。
 	y := int(int16((lparam >> 16) & 0xffff))
+	if y < uiTitleH {
+		// 按在标题区 = 拖动窗口：让系统接管，松手后位置由 close() 记住。
+		procReleaseCapture.Call()
+		procSendMessageW.Call(w.hwnd, wmNCLButtonDown, htCaption, 0)
+		return
+	}
 	if it, ok := w.ui.selectAt(y); ok {
 		w.result = Result{ID: it.ID, OK: true}
 		w.close()
@@ -636,7 +656,39 @@ func (w *winWindow) close() {
 		return
 	}
 	w.closed = true
+	w.rememberPos()
 	procDestroyWindow.Call(w.hwnd)
+}
+
+// grip 在标题栏右侧画一个 2×3 的握把点阵。
+//
+// 窗口无系统标题栏，用户看不出哪里能拖；用矩形而不是字形，避免依赖字体是否含该符号。
+func (p winPainter) grip() {
+	const dot, gap = 3, 4
+	gripW := 3*dot + 2*gap
+	right := int32(uiWidth - uiPad)
+	startX := right - int32(gripW)
+	startY := int32((uiTitleH - (2*dot + gap)) / 2)
+	col := uintptr(0x8a8d91)
+	for row := 0; row < 2; row++ {
+		for c := 0; c < 3; c++ {
+			x := startX + int32(c*(dot+gap))
+			y := startY + int32(row*(dot+gap))
+			p.fill(winRect{x, y, x + dot, y + dot}, col)
+		}
+	}
+}
+
+// rememberPos 记下窗口左上角，供下次弹出时复用。失败不影响关闭流程。
+func (w *winWindow) rememberPos() {
+	if w.posFile == "" || w.hwnd == 0 {
+		return
+	}
+	var r winRect
+	if ok, _, _ := procGetWindowRect.Call(w.hwnd, uintptr(unsafe.Pointer(&r))); ok == 0 {
+		return
+	}
+	_ = SavePos(w.posFile, int(r.left), int(r.top))
 }
 
 // paint 画整个窗口：标题、搜索行、列表（含高亮）、底部统计、边框。
@@ -668,6 +720,7 @@ func (w *winWindow) paint(hwnd uintptr) {
 
 	// 标题行：单个短文本，用 TextOutW 精确落点。
 	p.textOut(int32(uiPad), int32(uiPad+4), w.title, colText)
+	p.grip()
 	// 搜索行
 	p.text(w.band(uiListTop-uiQueryH, uiListTop-8), w.ui.queryLine(), colDim)
 	// 标题与列表之间的分隔线

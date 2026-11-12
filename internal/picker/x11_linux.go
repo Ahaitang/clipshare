@@ -134,6 +134,7 @@ func renderPick(v *pickView, face font.Face) *image.RGBA {
 	// 标题行
 	fillRect(img, 0, 0, pickW, pickTitleH, color.RGBA{0x2b, 0x2d, 0x31, 0xff})
 	drawText(img, face, pickPad, pickTitleH-11, v.title, pickTitleFg)
+	drawGrip(img, face)
 
 	// 搜索行
 	drawText(img, face, pickPad, pickTitleH+pickSearchH-9, "过滤:", pickMuted)
@@ -183,6 +184,25 @@ func renderPick(v *pickView, face font.Face) *image.RGBA {
 	drawText(img, face, pickPad, pickH-9, hint, pickMuted)
 
 	return img
+}
+
+// drawGrip 在标题栏右侧画一个「握把」（2 行 × 3 个点）。
+//
+// 作用纯粹是提示：这个窗口没有系统标题栏，用户看不出哪里能拖。
+// 用矩形而不是字体里的符号，避免依赖具体字体是否包含该字形。
+func drawGrip(img *image.RGBA, face font.Face) {
+	const dot, gap = 3, 4
+	gripW := 3*dot + 2*gap
+	right := pickW - pickPad
+	startX := right - gripW
+	startY := (pickTitleH - (2*dot + gap)) / 2
+	col := color.RGBA{0x8a, 0x8d, 0x91, 0xff}
+	for row := 0; row < 2; row++ {
+		for c := 0; c < 3; c++ {
+			fillRect(img, startX+c*(dot+gap), startY+row*(dot+gap), dot, dot, col)
+		}
+	}
+	_ = face
 }
 
 // fillRect 用纯色填充矩形区域（自动裁剪到图像范围内）。
@@ -317,11 +337,16 @@ func showX11(items []Item, opts Options) (Result, error) {
 		return Result{}, fmt.Errorf("%w: 分配窗口失败: %v", errX11Unavailable, err)
 	}
 
-	// 居中显示。
+	// 位置：优先用上次拖动后记住的位置（并夹到当前屏幕内，防止换屏后跑到看不见的地方），
+	// 没有记录时居中偏上——弹窗出现在视野上部比正中更符合直觉。
 	x := int16((int(screen.WidthInPixels) - pickW) / 2)
 	y := int16((int(screen.HeightInPixels) - pickH) / 3)
 	if y < 0 {
 		y = 0
+	}
+	if px, py, ok := LoadPos(opts.PosFile); ok {
+		cx, cy := ClampPos(px, py, int(screen.WidthInPixels), int(screen.HeightInPixels), pickW, pickH)
+		x, y = int16(cx), int16(cy)
 	}
 
 	const eventMask = xproto.EventMaskExposure | xproto.EventMaskKeyPress |
@@ -490,12 +515,29 @@ func showX11(items []Item, opts Options) (Result, error) {
 			if !dragging {
 				continue
 			}
-			curX = dragWinX + (e.RootX - dragRootX)
-			curY = dragWinY + (e.RootY - dragRootY)
+			// 用 QueryPointer 取权威的指针根坐标，而不是事件里的 RootX/RootY：
+			// 我们每动一次窗口，服务器就会补发新的指针事件，事件坐标会滞后，
+			// 实测「指针移 60px、窗口只移 34px」。QueryPointer 是一次往返，
+			// 只在拖动期间调用，代价可以接受。
+			rootX, rootY := e.RootX, e.RootY
+			if reply, qerr := xproto.QueryPointer(conn, win).Reply(); qerr == nil {
+				rootX, rootY = reply.RootX, reply.RootY
+			}
+			curX = dragWinX + (rootX - dragRootX)
+			curY = dragWinY + (rootY - dragRootY)
+			// 必须夹在屏幕内：X 的窗口坐标是带符号 16 位，负值经 uint16 转换会变成
+			// 巨大的正数，窗口直接飞到屏幕外（实测把指针拖到窗口上方就复现了）。
+			cx, cy := ClampPos(int(curX), int(curY),
+				int(screen.WidthInPixels), int(screen.HeightInPixels), pickW, pickH)
+			curX, curY = int16(cx), int16(cy)
 			_ = xproto.ConfigureWindowChecked(conn, win, xproto.ConfigWindowX|xproto.ConfigWindowY,
 				[]uint32{uint32(uint16(curX)), uint32(uint16(curY))}).Check()
 		case xproto.ButtonReleaseEvent:
-			dragging = false
+			if dragging {
+				dragging = false
+				// 只在拖完时写一次盘：位置只在拖动时变化，没必要每次弹窗都写。
+				_ = SavePos(opts.PosFile, int(curX), int(curY))
+			}
 		}
 	}
 }

@@ -42,6 +42,9 @@ type PullFunc func(id string) error
 type Options struct {
 	Title string // 窗口标题
 	Limit int    // 0 表示 DefaultLimit
+	// PosFile 是记住窗口位置的文件路径（空 = 每次都居中）。
+	// 由调用方给出，picker 只负责读写，避免这一层去猜配置目录。
+	PosFile string
 }
 
 // showFn 是平台实现的可替换句柄：生产环境指向 show（见 show_*.go），

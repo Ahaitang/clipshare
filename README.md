@@ -147,6 +147,15 @@ gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$P 
 
 命令行等价物：`clipshare pick`（需要 clipshare 正在运行；`--limit N` 控制显示条数）。
 
+**拖动与位置记忆**：按住弹窗**顶部标题条**可以拖动（右侧有一排 2×3 的小点作为提示）；
+拖动后的位置会被记住，下次弹出回到同一处（Windows 与 Linux 行为一致）。
+位置存在配置目录的 `picker.pos` 里，换显示器或改分辨率后如果记的位置在屏幕外，
+会自动夹回可见范围。想恢复居中，删掉该文件即可：
+
+```bash
+rm ~/.config/clipshare/picker.pos
+```
+
 ### Windows 上没有黑窗口
 
 Windows 版编成 **GUI 子系统**（`-H windowsgui`），双击或用计划任务启动都**不会弹出控制台黑窗**。

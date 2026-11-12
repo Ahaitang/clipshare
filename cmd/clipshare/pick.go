@@ -74,13 +74,19 @@ func runPick(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if runErr := picker.Run(entries, client.Pull, cfg.DeviceID, picker.Options{
-		Title: *title,
-		Limit: *limit,
+		Title:   *title,
+		Limit:   *limit,
+		PosFile: pickerPosFile(dir),
 	}); runErr != nil {
 		fmt.Fprintf(stderr, "clipshare pick: %v\n", runErr)
 		return 1
 	}
 	return 0
+}
+
+// pickerPosFile 是记住选择窗口位置的文件路径（与 config.json 同目录）。
+func pickerPosFile(cfgDir string) string {
+	return filepath.Join(cfgDir, "picker.pos")
 }
 
 // resolveUIBase 决定历史页基址：优先读主进程写下的真实地址，否则用 port+1。
