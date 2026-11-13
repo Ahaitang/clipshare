@@ -138,7 +138,8 @@ html = (html
         .replace("{{ARCH_SVG}}", ARCH_SVG)
         .replace("{{FLOW_SVG}}", FLOW_SVG)
         .replace("{{PICKER_PNG}}", b64("picker.png"))
-        .replace("{{WEBUI_PNG}}", b64("webui.png")))
+        .replace("{{WEBUI_PNG}}", b64("webui.png"))
+        .replace("{{ANDROID_PNG}}", b64("android-sender.png")))
 images.mkdir(parents=True, exist_ok=True)
 for f in src_images.glob("*.png"):
     images.joinpath(f.name).write_bytes(f.read_bytes())

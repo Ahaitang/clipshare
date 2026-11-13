@@ -138,6 +138,31 @@ cd clipshare-0.1.0-linux-amd64
 Windows 的 tgz 与 zip 内容一致（`clipshare.exe` + `install.ps1` + 手册），
 解开后双击 `安装.bat` 即可（会请求管理员权限以放行防火墙）。
 
+### Android 发送端（只发送，不接收）
+
+手机上的 APK：`clipshare-sender-<版本>.apk`，把手机里的文本发到局域网内的电脑。
+
+**为什么它只发送**：桌面端是靠 mDNS / `seeds` 探活（`GET /v1/health`）发现彼此的，
+而这个 App **不起 HTTP 服务**，所以电脑端根本发现不到它，也就不会往里推内容 ——
+「只发送」不是靠开关，而是靠它没有可被发现的入口。
+
+用法：
+
+1. 在电脑上 `clipshare invite` 拿到邀请码，粘到 App 顶部（或通过下面的 Intent 预置）；
+2. 在文本框输入/粘贴内容 → 点「发送」；也可以点「读系统剪贴板」直接取手机剪贴板；
+3. 更省事：在任意 App 里选中文本 → 分享 → 选「clipshare 发送端」，**自动发送并返回**。
+
+```bash
+# 用 adb 预置邀请码（也可给二维码/深链用同一套 extra）
+adb shell am start -n work.metoak.clipshare.sender/.MainActivity \
+  --es invite 'clipshare1:房间码@电脑IP:47100'
+```
+
+发送成功后电脑端历史里来源显示为 **手机**（`origin=android`），并会像普通条目一样继续同步到其它电脑。
+
+已知限制（都是有意的）：不接收、不保留历史、不在后台轮询剪贴板（Android 10+ 也不允许后台读剪贴板）；
+协议为明文 HTTP，与桌面端一致。
+
 ### 第一次配置：三条路，最省事的是「邀请码」
 
 一台从没配置过的机器，装完之后只要**拿到一条邀请码**就能接进房间。邀请码把

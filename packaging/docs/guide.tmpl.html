@@ -161,6 +161,19 @@ clipshare init         # 或者交互式选择「我是第一台机器」</code>
 （追加到你的列表，不覆盖 flameshot 等已有项）；组合键已被别的程序占用时不会抢占，只在日志里提示。
 非 GNOME 桌面不自动登记，请自行把某个组合键绑到 <code>clipshare pick</code>。</p>
 
+<h2 id="android">4.5　Android 发送端（只发送，不接收）</h2>
+<p>安装 <code>clipshare-sender-0.1.0.apk</code>，把邀请码粘进 App，即可把手机里的文本发到电脑。
+它在电脑看来不是一个节点（<strong>不起 HTTP 服务</strong>，所以电脑发现不到它，也就不会往手机推内容）——
+「只发送」是结构决定的，不是开关。</p>
+<figure>
+<img src="data:image/png;base64,{{ANDROID_PNG}}" alt="Android 发送端界面" width="300">
+<figcaption>图 3　真机界面：邀请码、内容、发送与剪贴板读取；发送成功后显示目标地址</figcaption>
+</figure>
+<p>在任意 App 里「分享」文本给它，会自动发送并返回；也可以在电脑上
+<code>clipshare invite</code> 拿邀请码后用 adb 预置：</p>
+<pre><code>adb shell am start -n work.metoak.clipshare.sender/.MainActivity \
+  --es invite 'clipshare1:房间码@电脑IP:47100'</code></pre>
+
 <h2 id="webui">5. 本地历史页</h2>
 <p><code>http://127.0.0.1:47101/ui</code>（端口 = 同步端口 + 1）。页面只绑回环地址、无鉴权，
 提供搜索、行内「复制到本机」、清空历史、重启，以及房间与邀请面板。</p>

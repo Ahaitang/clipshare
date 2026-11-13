@@ -148,11 +148,25 @@ rm -rf "$LINUX_TREE"
 
 
 rm -f "$DIST/clipshare" "$DIST/clipshare.exe"
+# ---------- Android 发送端 APK ----------
+# 只发送、不接收：它是一个纯上行客户端（不监听端口），所以桌面端根本发现不到它。
+echo "==> 打包 Android 发送端（如已具备 Android SDK）"
+if [ -x packaging/android/build-apk.sh ] && { [ -n "${ANDROID_HOME:-}" ] || [ -d /opt/android-sdk ]; }; then
+    if packaging/android/build-apk.sh "$VERSION" >/dev/null 2>&1; then
+        echo "    clipshare-sender-$VERSION.apk 已生成"
+    else
+        echo "    ! APK 构建失败（不影响其它产物；单独跑 packaging/android/build-apk.sh 可看日志）"
+    fi
+else
+    echo "    ! 未找到 Android SDK（ANDROID_HOME 或 /opt/android-sdk），跳过 APK"
+fi
+
 # ---------- 校验和 ----------
 echo "==> 生成校验和"
 ( cd "$DIST" && : > SHA256SUMS
   for f in "$DEB_NAME" "$(basename "$WIN_ZIP")" \
            "clipshare-${VERSION}-windows-setup.exe" \
+           "clipshare-sender-${VERSION}.apk" \
            "clipshare-${VERSION}-linux-amd64.tar.gz" \
            "clipshare-${VERSION}-windows-amd64.tar.gz" \
            README.md README.html docs/guide.html docs/guide.pdf; do
