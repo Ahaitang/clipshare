@@ -159,6 +159,13 @@ echo "==> 生成校验和"
       [ -f "$f" ] && sha256sum "$f" >> SHA256SUMS
   done )
 
+# ---------- 整包（把 dist 里所有东西打成一条 tgz） ----------
+# 用途：离线交付/存档，一个文件拿走全部安装包与文档。
+echo "==> 打包整包 tgz"
+BUNDLE="clipshare-${VERSION}-all.tar.gz"
+( cd "$DIST" && ls | grep -v "^$BUNDLE$" > .bundle-list && tar $TAR_FLAGS -czf "$BUNDLE" -T .bundle-list && rm -f .bundle-list )
+( cd "$DIST" && sha256sum "$BUNDLE" >> SHA256SUMS )
+
 echo
 echo "完成，产物在 $DIST："
 ls -lh "$DIST" | sed 's/^/  /'

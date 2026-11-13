@@ -27,6 +27,20 @@ for f in README.md README.html guide.html guide.pdf; do
 done
 install -m 0644 clipshare.service "$UNITDIR/clipshare.service"
 
+# 装到标准前缀时顺手启用：否则用户看到「装好了」却什么都没跑，体验很差。
+# 临时前缀（测试/自定义目录）下不动 systemd —— 那里的 unit 本来就不在搜索路径里。
+case "$PREFIX" in
+    /usr|/usr/local|"$HOME/.local")
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl --user daemon-reload 2>/dev/null || true
+            if systemctl --user enable --now clipshare.service 2>/dev/null; then
+                say ""
+                say "已设置为开机自启并启动。"
+            fi
+        fi
+        ;;
+esac
+
 say ""
 say "已安装：$BINDIR/clipshare"
 say "文档：  $DOCDIR/guide.html"

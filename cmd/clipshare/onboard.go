@@ -222,3 +222,39 @@ func joinRoom(dir, code string) error {
 	}()
 	return nil
 }
+
+// runStatus 打印本机同步状态（不打开托盘也能排障）。
+func runStatus(args []string, stdout, stderr io.Writer) int {
+	dir, cfg, rc := commonFlags("clipshare status", args, stderr)
+	if rc != -1 {
+		return rc
+	}
+	st, err := picker.NewHTTPClient(resolveUIBase(dir, cfg.Port)).Status()
+	if err != nil {
+		fmt.Fprintf(stderr, "clipshare status: %v\n", err)
+		fmt.Fprintf(stderr, "提示：clipshare 似乎没有在运行；先启动它，或用 journalctl --user -u clipshare 看日志。\n")
+		return 1
+	}
+	state := "无可用节点"
+	switch {
+	case st.Paused:
+		state = "已暂停同步"
+	case st.Peers > 0:
+		state = fmt.Sprintf("与 %d 台同步中", st.Peers)
+	}
+	fmt.Fprintf(stdout, "节点：%s\n", st.NodeName)
+	fmt.Fprintf(stdout, "房间：%s\n", st.RoomHash)
+	fmt.Fprintf(stdout, "状态：%s\n", state)
+	fmt.Fprintf(stdout, "历史：%d 条\n", st.Entries)
+	fmt.Fprintf(stdout, "自动应用远端剪贴板：%v　mDNS：%v\n", st.AutoApply, st.MDNS)
+	if st.LastError != "" {
+		fmt.Fprintf(stdout, "最近错误：%s\n", st.LastError)
+	}
+	if st.Peers == 0 && !st.Paused {
+		fmt.Fprintf(stdout, "\n排查建议：\n")
+		fmt.Fprintf(stdout, "  1) 两端房间码一致吗：对比对方 clipshare status 的「房间」\n")
+		fmt.Fprintf(stdout, "  2) 对方地址写进 seeds 了吗：clipshare invite 拿邀请码，另一端 clipshare join\n")
+		fmt.Fprintf(stdout, "  3) 防火墙放行入站了吗（Windows 默认阻断）\n")
+	}
+	return 0
+}

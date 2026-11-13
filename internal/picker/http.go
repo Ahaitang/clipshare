@@ -47,6 +47,35 @@ func (c *HTTPClient) Entries() ([]model.Entry, error) {
 	return entries, nil
 }
 
+// Status 是本机同步状态（来自 /ui/api/status）。
+type Status struct {
+	NodeName  string `json:"nodeName"`
+	RoomHash  string `json:"roomHash"`
+	Peers     int    `json:"peers"`
+	Paused    bool   `json:"paused"`
+	AutoApply bool   `json:"autoApply"`
+	MDNS      bool   `json:"mdns"`
+	Entries   int    `json:"entries"`
+	LastError string `json:"lastError"`
+}
+
+// Status 读取本机同步状态。
+func (c *HTTPClient) Status() (Status, error) {
+	var st Status
+	resp, err := c.Client.Get(c.BaseURL + "/ui/api/status")
+	if err != nil {
+		return st, fmt.Errorf("连接本机历史页失败（clipshare 是否在运行？）: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return st, fmt.Errorf("状态接口返回 HTTP %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		return st, fmt.Errorf("解析状态失败: %w", err)
+	}
+	return st, nil
+}
+
 // Restart 请求运行中的实例重启（配置改动后应用新设置）。
 func (c *HTTPClient) Restart() error {
 	resp, err := c.Client.Post(c.BaseURL+"/ui/api/restart", "application/json", bytes.NewReader([]byte("{}")))

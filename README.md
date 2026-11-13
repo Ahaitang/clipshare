@@ -224,7 +224,8 @@ gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$P 
 
 > 注意：GNOME 的自定义快捷键命令**不做 `~` 展开**，必须写绝对路径，否则按了没反应。
 
-命令行等价物：`clipshare pick`（需要 clipshare 正在运行；`--limit N` 控制显示条数）。
+`clipshare status` 可以在不开托盘的情况下看「与几台同步中」、房间码、历史条数与最近错误；
+历史页顶部的状态条读的是同一份数据。命令行等价物：`clipshare pick`（需要 clipshare 正在运行；`--limit N` 控制显示条数）。
 
 **拖动与位置记忆**：按住弹窗**顶部标题条**可以拖动（右侧有一排 2×3 的小点作为提示）；
 拖动后的位置会被记住，下次弹出回到同一处（Windows 与 Linux 行为一致）。

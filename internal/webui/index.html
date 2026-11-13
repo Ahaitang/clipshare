@@ -21,6 +21,10 @@ body{ margin:0; padding:28px 20px 64px; background:var(--bg); color:var(--ink); 
 .brand .sub{color:var(--dim);font-size:13px}
 .tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 input[type=search]{width:240px;padding:7px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit;outline:none}
+.status{display:inline-block;margin-left:10px;padding:2px 10px;border-radius:999px;
+  font-size:12.5px;border:1px solid var(--line);color:var(--muted);background:var(--panel)}
+.status.ok{color:#1a7f37;border-color:#1a7f3733}
+.status.warn{color:#9a6700;border-color:#9a670033}
 .room{margin:14px 0 4px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 .room>summary{padding:11px 14px;cursor:pointer;font-size:14px;color:var(--muted);list-style:none}
 .room>summary::-webkit-details-marker{display:none}
@@ -78,7 +82,11 @@ button.copy{font-size:12px;padding:5px 10px;white-space:nowrap;align-self:start}
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="brand"><h1>clipshare</h1><span class="sub">本机剪贴板历史</span></div>
+    <div class="brand">
+      <h1>clipshare</h1>
+      <span class="sub">本机剪贴板历史</span>
+      <span id="status" class="status" hidden></span>
+    </div>
     <div class="tools">
       <input id="q" type="search" placeholder="搜索内容或来源…" autocomplete="off" spellcheck="false" aria-label="搜索历史">
       <span id="count" class="count"></span>
@@ -298,6 +306,24 @@ $('#join').addEventListener('click', async () => {
   }
 });
 
+async function loadStatus() {
+  try {
+    const r = await fetch('/ui/api/status', { cache: 'no-store' });
+    if (!r.ok) return;
+    const st = await r.json();
+    const el = $('#status');
+    let text, cls = 'status';
+    if (st.paused) { text = '已暂停'; cls += ' warn'; }
+    else if (st.peers > 0) { text = '与 ' + st.peers + ' 台同步中'; cls += ' ok'; }
+    else { text = '无可用节点'; cls += ' warn'; }
+    el.textContent = text;
+    el.className = cls;
+    el.title = '房间 ' + st.roomHash + ' · 节点 ' + st.nodeName +
+               (st.lastError ? ' · 最近错误：' + st.lastError : '');
+    el.hidden = false;
+  } catch (e) { /* 状态拿不到就不显示，不影响历史列表 */ }
+}
+
 $('#refresh').addEventListener('click', load);
 $('#clear').addEventListener('click', () => { $('#confirm').hidden = false; $('#clear').disabled = true; });
 $('#cancel').addEventListener('click', () => { $('#confirm').hidden = true; $('#clear').disabled = false; });
@@ -330,7 +356,7 @@ document.addEventListener('keydown', (ev) => {
   }
 });
 
-setInterval(() => { if (!document.hidden) load(); }, 4000);
+setInterval(() => { if (!document.hidden) load(); loadStatus(); }, 4000);
 load();
 </script>
 </body>

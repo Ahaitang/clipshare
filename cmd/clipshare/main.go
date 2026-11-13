@@ -66,6 +66,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return runJoin(args[1:], stdout, stderr)
 		case "init":
 			return runInit(args[1:], stdout, stderr)
+		case "status":
+			return runStatus(args[1:], stdout, stderr)
 		}
 	}
 
@@ -225,6 +227,7 @@ func serve(opts *options) error {
 		Restart: requestRestart,
 		Invite:  func() (string, error) { return onboard.Build(cfg).String(), nil },
 		Join:    func(code string) error { return joinRoom(dir, code) },
+		Status:  eng.Snapshot,
 	})
 	if closeUI != nil {
 		defer closeUI()

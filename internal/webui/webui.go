@@ -41,6 +41,8 @@ type Options struct {
 	Invite func() (string, error)
 	// Join 用一条邀请码加入别人的房间（写配置 + 重启）；nil 时页面不显示加入框。
 	Join func(code string) error
+	// Status 返回当前同步状态；nil 时页面不显示状态条。
+	Status func() engine.Snapshot
 }
 
 func Handler(ctrl engine.Controller, opts Options) http.Handler {
@@ -54,6 +56,7 @@ func Handler(ctrl engine.Controller, opts Options) http.Handler {
 	mux.HandleFunc("POST /ui/api/restart", api.restart)
 	mux.HandleFunc("GET /ui/api/invite", api.invite)
 	mux.HandleFunc("POST /ui/api/join", api.join)
+	mux.HandleFunc("GET /ui/api/status", api.status)
 	// 顺手让根路径跳到页面，免得用户从端口地址摸进来看到 404。
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui", http.StatusFound)
@@ -112,6 +115,37 @@ func (a *api) clear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// statusResponse 是 /ui/api/status 的响应体。
+type statusResponse struct {
+	NodeName  string `json:"nodeName"`
+	RoomHash  string `json:"roomHash"`
+	Peers     int    `json:"peers"`
+	Paused    bool   `json:"paused"`
+	AutoApply bool   `json:"autoApply"`
+	MDNS      bool   `json:"mdns"`
+	Entries   int    `json:"entries"`
+	LastError string `json:"lastError"`
+}
+
+// status 返回同步状态：不打开托盘也能知道「同步到几台了」，无头排障主要靠它。
+func (a *api) status(w http.ResponseWriter, r *http.Request) {
+	if a.opts.Status == nil {
+		writeError(w, http.StatusNotImplemented, "当前模式下不提供状态")
+		return
+	}
+	snap := a.opts.Status()
+	writeJSON(w, http.StatusOK, statusResponse{
+		NodeName:  snap.NodeName,
+		RoomHash:  snap.RoomHash,
+		Peers:     snap.Peers,
+		Paused:    snap.Paused,
+		AutoApply: snap.AutoApply,
+		MDNS:      snap.MDNS,
+		Entries:   len(a.ctrl.ListEntries()),
+		LastError: snap.LastError,
+	})
 }
 
 // invite 返回本机邀请码。
