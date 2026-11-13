@@ -56,9 +56,8 @@ var showFn = show
 // selfDeviceID 用于把来源标成「本机」；来自其它节点的条目显示其节点名。
 // 用户取消时返回 nil（不是错误）。
 func Run(entries []model.Entry, pull PullFunc, selfDeviceID string, opts Options) error {
-	if len(entries) == 0 {
-		return fmt.Errorf("剪贴板历史为空，先复制一些内容再试")
-	}
+	// 空历史不提前退出：以前这里直接返回错误，用户按快捷键后「什么都没发生」，
+	// 会以为快捷键坏了（实测踩到）。现在照样弹窗，由平台实现画一句说明。
 	items := FromEntries(entries, selfDeviceID)
 	if opts.Limit <= 0 {
 		opts.Limit = DefaultLimit

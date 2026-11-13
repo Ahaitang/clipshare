@@ -171,7 +171,12 @@ func renderPick(v *pickView, face font.Face) *image.RGBA {
 		drawText(img, face, pickW-pickPad-timeW, baseline, it.When, pickMuted)
 	}
 	if len(v.shown) == 0 {
-		drawText(img, face, pickPad, listTop+pickRowH-8, "没有匹配的历史条目", pickMuted)
+		hint := "没有匹配的历史条目"
+		if len(v.all) == 0 {
+			// 历史为空时说清原因，否则用户只会看到「快捷键按了没反应」。
+			hint = "还没有剪贴板历史：先复制一些内容（Esc 关闭）"
+		}
+		drawText(img, face, pickPad, listTop+pickRowH-8, hint, pickMuted)
 	}
 
 	// 底部统计与提示

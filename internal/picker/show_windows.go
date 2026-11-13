@@ -745,8 +745,13 @@ func (w *winWindow) band(top, bottom int) winRect {
 func (w *winWindow) paintRows(p winPainter) {
 	if w.ui.count() == 0 {
 		// 有历史但搜索词没命中（或历史为空）：在列表区中央给一句话。
+		hint := uiEmptyHint
+		if len(w.ui.all) == 0 {
+			// 历史为空时给明确原因，别让用户以为快捷键没生效。
+			hint = "还没有剪贴板历史：先复制一些内容（Esc 关闭）"
+		}
 		p.textIn(winRect{int32(uiPad), int32(uiListTop), int32(uiWidth - uiPad), int32(uiListBottom)},
-			uiEmptyHint, colDim, dtCenter)
+			hint, colDim, dtCenter)
 		return
 	}
 	for slot := 0; slot < uiVisibleRows; slot++ {

@@ -59,6 +59,13 @@ func runPick(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	// 同一时刻只允许一个选择窗口：连按快捷键不该叠出好几个（见 picker.SingleInstance）。
+	release, ok := picker.SingleInstance(filepath.Join(dir, "picker.lock"))
+	if !ok {
+		return 0 // 已有窗口在显示，静默退出即可，不打扰用户
+	}
+	defer release()
+
 	base := resolveUIBase(dir, cfg.Port)
 	client := picker.NewHTTPClient(base)
 
@@ -68,11 +75,6 @@ func runPick(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "提示：请确认 clipshare 正在运行（托盘图标存在），或先执行 ./clipshare 启动。\n")
 		return 1
 	}
-	if len(entries) == 0 {
-		fmt.Fprintln(stderr, "clipshare: 剪贴板历史为空，先复制一些内容再试。")
-		return 1
-	}
-
 	if runErr := picker.Run(entries, client.Pull, cfg.DeviceID, picker.Options{
 		Title:   *title,
 		Limit:   *limit,

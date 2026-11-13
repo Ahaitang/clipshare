@@ -373,6 +373,12 @@ v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都
   `200` = 这个方向通；`000` = 连不上（被防火墙挡、端口不对或没在监听）。哪边测出 `000`，就是哪边的入站没放行。
 - **日志显示「广播条目 … 当前无可用节点」**：说明 peer 发现根本没成功，而不是发送失败。依次确认：① 各机 `roomKey` 一致；② `mdns: false` 时 `seeds` 的 `host:port` 填对且能互相路由；③ 端口入站已放行——seeds 探活走的就是同一个端口，被防火墙挡住就永远发现不了对方。
 - **Linux 报缺剪贴板命令**：X11 下报 `缺少剪贴板命令 xclip/xsel：请安装其一，例如 sudo apt install xclip（或 sudo apt install xsel）`；Wayland 下报 `Wayland 会话缺少剪贴板命令 wl-paste、wl-copy：请安装 wl-clipboard：sudo apt install wl-clipboard`——按提示装即可。若你其实在 X11 会话却带着 `WAYLAND_DISPLAY`，清掉该变量再启动。
+- **按 `Ctrl+Alt+V` 没反应**：先跑 `clipshare status` 看 `历史：N 条`。
+  - **历史为空**时旧版本会静默退出（现在改成照样弹窗并提示「还没有剪贴板历史」）；
+  - 历史不为空却仍无反应，就看 `journalctl --user -u clipshare -n 20` 里「快捷键」那一行，
+    确认它是 `已就绪` 还是提示被别的程序占用。
+- **连按快捷键想关掉窗口**：现在同一时刻只允许一个选择窗口（`picker.lock` 文件锁），
+  连按不会叠窗口；关掉用 `Esc`（或点某一行取回）。
 - **无图形会话**：报 `未检测到图形会话（DISPLAY 与 WAYLAND_DISPLAY 均未设置），无法访问剪贴板` ——剪贴板必须有桌面会话，SSH/headless 下不可用。
 - **配置被重置**：日志提示配置损坏时，同目录的 `config.json.bak` 是原文件；重建后 `deviceId` / `roomKey` 变了，需要重新对齐房间码。
 - **历史落盘失败**（磁盘满 / 无权限）：内存历史继续可用，日志每分钟最多一条告警。

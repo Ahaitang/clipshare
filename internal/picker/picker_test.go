@@ -115,11 +115,32 @@ func stubShow(t *testing.T, res Result, retErr error, seen *[]Item) {
 	t.Cleanup(func() { showFn = prev })
 }
 
-func TestRunEmptyHistory(t *testing.T) {
-	stubShow(t, Result{OK: true, ID: "whatever"}, nil, nil)
-	err := Run(nil, func(string) error { return nil }, "dev-self", Options{})
-	if err == nil || !strings.Contains(err.Error(), "为空") {
-		t.Fatalf("空历史应返回可读错误，实际 %v", err)
+func TestRunEmptyHistoryStillShowsWindow(t *testing.T) {
+	// 空历史也要弹窗：否则用户按快捷键看到「什么都没发生」，会以为快捷键坏了。
+	var seen []Item
+	shown := false
+	stubShow(t, Result{OK: false}, nil, &seen)
+	prev := showFn
+	showFn = func(items []Item, opts Options) (Result, error) {
+		shown = true
+		seen = items
+		return Result{OK: false}, nil
+	}
+	t.Cleanup(func() { showFn = prev })
+
+	pulled := false
+	err := Run(nil, func(string) error { pulled = true; return nil }, "dev-self", Options{})
+	if err != nil {
+		t.Fatalf("空历史不应报错: %v", err)
+	}
+	if !shown {
+		t.Fatal("空历史时仍应展示窗口（由平台实现画说明文字）")
+	}
+	if len(seen) != 0 {
+		t.Fatalf("传给窗口的条目应为空，实际 %d 条", len(seen))
+	}
+	if pulled {
+		t.Fatal("取消时不得取回")
 	}
 }
 
