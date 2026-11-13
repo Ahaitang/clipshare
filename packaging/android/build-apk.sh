@@ -68,7 +68,10 @@ fi
 
 echo "==> apksigner 签名"
 APK="$DIST/clipshare-sender-${VERSION}.apk"
+# --v4-signing-enabled false：否则会在 APK 旁边留一个 .idsig 附属文件，
+# 它只对增量安装（adb install --incremental）有用，放进发布包只是噪音。
 "$BT/apksigner" sign --ks "$KS" --ks-pass pass:clipshare --key-pass pass:clipshare \
+    --v4-signing-enabled false \
     --out "$APK" "$OUT/aligned.apk"
 "$BT/apksigner" verify --print-certs "$APK" | head -3
 
