@@ -79,7 +79,7 @@ func (s *Store) Load() error {
 		return fmt.Errorf("读取历史失败: %w", err)
 	}
 	var loaded []model.Entry
-	if err := json.Unmarshal(raw, &loaded); err != nil {
+	if err := json.Unmarshal(stripBOM(raw), &loaded); err != nil {
 		s.entries = nil
 		return fmt.Errorf("历史文件损坏，已从空历史起步: %w", err)
 	}
@@ -101,6 +101,15 @@ func (s *Store) Load() error {
 		}
 	}
 	return nil
+}
+
+// stripBOM 去掉 UTF-8 BOM：历史文件被人用记事本/PowerShell 改过就会带 BOM，
+// 直接 Unmarshal 会失败，导致「历史文件损坏」而从空历史起步（相当于数据全丢）。
+func stripBOM(b []byte) []byte {
+	if len(b) >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF {
+		return b[3:]
+	}
+	return b
 }
 
 // Add 加入一条记录。

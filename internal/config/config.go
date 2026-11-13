@@ -128,7 +128,7 @@ func Load(dir string) (*Config, error) {
 	}
 
 	var parsed configJSON
-	if jsonErr := json.Unmarshal(raw, &parsed); jsonErr != nil {
+	if jsonErr := json.Unmarshal(stripBOM(raw), &parsed); jsonErr != nil {
 		backup := Path(dir) + ".bak"
 		_ = os.WriteFile(backup, raw, 0o600)
 		cfg := Default()
@@ -192,6 +192,20 @@ func applyJSON(cfg *Config, p *configJSON) {
 	if p.NoTray != nil {
 		cfg.NoTray = *p.NoTray
 	}
+}
+
+// stripBOM 去掉 UTF-8 BOM。
+//
+// 必须容忍它：Windows 的记事本、PowerShell 的 `Set-Content -Encoding UTF8`、
+// 以及不少编辑器默认都写 BOM，而 Go 的 json.Unmarshal 遇到 BOM 会直接报
+// "invalid character 'ï' looking for beginning of value"。
+// 后果很严重——配置被当成损坏，重建后**换了 deviceId 与 roomKey，机器直接脱离房间**
+// （实测踩到：一台机器因此从「与 1 台同步中」变成「无可用节点」）。
+func stripBOM(b []byte) []byte {
+	if len(b) >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF {
+		return b[3:]
+	}
+	return b
 }
 
 // Save 原子写入配置文件（权限 0600，含房间密钥）。

@@ -371,3 +371,26 @@ func TestRandomIdentityNeverFallsBackToPredictableValues(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadToleratesUTF8BOM(t *testing.T) {
+	// Windows 的记事本 / PowerShell 的 Set-Content -Encoding UTF8 都会写 BOM。
+	// 不容忍它的话配置会被当成损坏并重建 —— 机器会带着新 roomKey 脱离房间。
+	dir := t.TempDir()
+	body := []byte("\xEF\xBB\xBF" + `{"roomKey":"bomroom1234","port":48100,"nodeName":"BOM-PC"}`)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(Path(dir), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("带 BOM 的配置应能正常加载，实际报错: %v", err)
+	}
+	if cfg.RoomKey != "bomroom1234" || cfg.Port != 48100 || cfg.NodeName != "BOM-PC" {
+		t.Fatalf("字段未正确读取: %+v", cfg)
+	}
+	if _, statErr := os.Stat(Path(dir) + ".bak"); statErr == nil {
+		t.Error("不应把带 BOM 的合法配置备份成 .bak")
+	}
+}

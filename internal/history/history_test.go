@@ -196,3 +196,19 @@ func TestListLimitAndCopy(t *testing.T) {
 		t.Fatal("List 必须返回副本，不能暴露内部切片")
 	}
 }
+
+func TestLoadToleratesUTF8BOM(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "history.json")
+	body := []byte("\xEF\xBB\xBF" + `[{"id":"abc","content":"bom 历史","recvAt":"2026-11-13T10:00:00Z"}]`)
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := New(10, path, true)
+	if err := s.Load(); err != nil {
+		t.Fatalf("带 BOM 的历史应能加载: %v", err)
+	}
+	if s.Count() != 1 || s.List(1)[0].Content != "bom 历史" {
+		t.Fatalf("历史未正确读取: %+v", s.List(0))
+	}
+}
