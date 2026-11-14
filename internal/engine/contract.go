@@ -21,6 +21,7 @@ type Snapshot struct {
 	// 拓扑角色状态：一份配置同时支持两种拓扑，托盘与状态页需要能看出当前开着哪些。
 	LANEnabled     bool          // 局域网对等是否启用
 	RelayURL       string        // 中继中心点地址；空 = 未配置中继客户端
+	RelayEnabled   bool          // 中继客户端开关（地址保留但可停用）
 	RelayConnected bool          // 中继当前是否连通（最近一次拉取成功）
 	LastError      string        // 最近一次可展示的错误；空 = 无错误
 	Recent         []model.Entry // 最新在前，长度由 engine 决定（通常为托盘可见条数）

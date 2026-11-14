@@ -262,6 +262,16 @@ func serve(opts *options) error {
 		defer relayStop()
 	}
 
+	// 必须无条件注入中继状态：不仅「连上了要显示」，**没配置/停用了也要显示**，
+	// 否则托盘那个勾选项永远处于未勾选状态，点了只会「再启用一次」而在用户看来毫无反应
+	// （实测就是这么被发现的）。
+	eng.SetRelayStatus(cfg.RelayURL, cfg.RelayEnabled, func() bool {
+		if relayClient == nil {
+			return false
+		}
+		return relayClient.Connected()
+	})
+
 	// 本地历史页只绑回环地址（spec §9）；起不来不影响同步。
 	uiURL, closeUI := startWebUI(eng, cfg.Port, dir, webui.Options{
 		Restart: requestRestart,
@@ -269,10 +279,13 @@ func serve(opts *options) error {
 		Join:    func(code string) error { return joinRoom(dir, code) },
 		Status:  eng.Snapshot,
 		Relay: func() (string, bool) {
-			if relayClient == nil {
-				return "", false
+			// 只有「配置了地址且开关打开且最近拉取成功」才算连通；
+			// 但地址本身要一直返回，状态页才能显示「已配置、已停用」。
+			snap := eng.Snapshot()
+			if !snap.RelayEnabled {
+				return snap.RelayURL, false
 			}
-			return cfg.RelayURL, relayClient.Connected()
+			return snap.RelayURL, snap.RelayConnected
 		},
 	})
 	if closeUI != nil {

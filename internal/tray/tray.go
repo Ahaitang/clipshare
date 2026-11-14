@@ -185,7 +185,8 @@ func (t *tray) toggleLAN() {
 
 // toggleRelay 切换中心点中继。
 func (t *tray) toggleRelay() {
-	cur := t.currentSnapshot().RelayURL != ""
+	snap := t.currentSnapshot()
+	cur := snap.RelayURL != "" && snap.RelayEnabled
 	if err := t.opts.RelayToggle(!cur); err != nil {
 		log.Printf("tray: 切换中继失败: %v", err)
 	}
@@ -283,8 +284,10 @@ func (t *tray) syncChecks(snap engine.Snapshot) {
 		syncCheck(t.lan, snap.LANEnabled)
 	}
 	if t.relay != nil {
-		syncCheck(t.relay, snap.RelayURL != "")
-		if snap.RelayURL != "" {
+		syncCheck(t.relay, snap.RelayURL != "" && snap.RelayEnabled)
+		if snap.RelayURL == "" {
+			t.relay.SetTitle("启用中心点中继（未配置 relayURL）")
+		} else if snap.RelayEnabled {
 			// 标题里体现连通性：光有地址不代表连得上（指纹错、中心点挂了都会连不上）。
 			if snap.RelayConnected {
 				t.relay.SetTitle("启用中心点中继（已连通）")

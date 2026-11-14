@@ -119,6 +119,7 @@ type Engine struct {
 	// 中继状态由 cmd 层注入（中继客户端不归 engine 管，但托盘/状态页要能看见）。
 	relayMu        stdsync.Mutex
 	relayURL       string
+	relayEnabled   bool
 	relayConnected func() bool
 
 	// finderRebuildMu 串行化「停止旧 Finder + 启动新 Finder」，
@@ -302,33 +303,36 @@ func (e *Engine) Stop() {
 }
 
 // SetRelayStatus 由 cmd 层注入中继客户端的地址与连通性判断（供托盘与状态页展示）。
-func (e *Engine) SetRelayStatus(url string, connected func() bool) {
+func (e *Engine) SetRelayStatus(url string, enabled bool, connected func() bool) {
 	e.relayMu.Lock()
 	defer e.relayMu.Unlock()
 	e.relayURL = url
+	e.relayEnabled = enabled
 	e.relayConnected = connected
 }
 
 // relaySnapshot 返回中继地址与连通性（未配置时为空/false）。
-func (e *Engine) relaySnapshot() (string, bool) {
+func (e *Engine) relaySnapshot() (string, bool, bool) {
 	e.relayMu.Lock()
 	defer e.relayMu.Unlock()
 	url := e.relayURL
+	enabled := e.relayEnabled
 	ok := false
 	if e.relayConnected != nil {
 		ok = e.relayConnected()
 	}
-	return url, ok
+	return url, enabled, ok
 }
 
 // Snapshot 返回给托盘/Web UI 的状态快照。
 func (e *Engine) Snapshot() Snapshot {
 	recent := e.store.List(SnapshotRecent)
 	lastErr := e.errText()
-	relayURL, relayOK := e.relaySnapshot()
+	relayURL, relayEnabled, relayOK := e.relaySnapshot()
 	return Snapshot{
 		LANEnabled:     e.cfg.LANEnabled,
 		RelayURL:       relayURL,
+		RelayEnabled:   relayEnabled,
 		RelayConnected: relayOK,
 		NodeName:       e.cfg.NodeName,
 		RoomHash:       e.cfg.RoomHashValue(),

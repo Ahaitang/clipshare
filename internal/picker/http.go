@@ -49,16 +49,17 @@ func (c *HTTPClient) Entries() ([]model.Entry, error) {
 
 // Status 是本机同步状态（来自 /ui/api/status）。
 type Status struct {
-	NodeName  string `json:"nodeName"`
-	RoomHash  string `json:"roomHash"`
-	Peers     int    `json:"peers"`
-	Paused    bool   `json:"paused"`
-	AutoApply bool   `json:"autoApply"`
-	MDNS      bool   `json:"mdns"`
-	Entries   int    `json:"entries"`
-	LastError string `json:"lastError"`
-	RelayURL  string `json:"relayURL"`
-	RelayOK   bool   `json:"relayConnected"`
+	NodeName     string `json:"nodeName"`
+	RoomHash     string `json:"roomHash"`
+	Peers        int    `json:"peers"`
+	Paused       bool   `json:"paused"`
+	AutoApply    bool   `json:"autoApply"`
+	MDNS         bool   `json:"mdns"`
+	Entries      int    `json:"entries"`
+	LastError    string `json:"lastError"`
+	RelayURL     string `json:"relayURL"`
+	RelayEnabled bool   `json:"relayEnabled"`
+	RelayOK      bool   `json:"relayConnected"`
 }
 
 // Status 读取本机同步状态。

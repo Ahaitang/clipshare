@@ -121,16 +121,17 @@ func (a *api) clear(w http.ResponseWriter, r *http.Request) {
 
 // statusResponse 是 /ui/api/status 的响应体。
 type statusResponse struct {
-	NodeName  string `json:"nodeName"`
-	RoomHash  string `json:"roomHash"`
-	Peers     int    `json:"peers"`
-	Paused    bool   `json:"paused"`
-	AutoApply bool   `json:"autoApply"`
-	MDNS      bool   `json:"mdns"`
-	Entries   int    `json:"entries"`
-	LastError string `json:"lastError"`
-	RelayURL  string `json:"relayURL"`
-	RelayOK   bool   `json:"relayConnected"`
+	NodeName     string `json:"nodeName"`
+	RoomHash     string `json:"roomHash"`
+	Peers        int    `json:"peers"`
+	Paused       bool   `json:"paused"`
+	AutoApply    bool   `json:"autoApply"`
+	MDNS         bool   `json:"mdns"`
+	Entries      int    `json:"entries"`
+	LastError    string `json:"lastError"`
+	RelayURL     string `json:"relayURL"`
+	RelayEnabled bool   `json:"relayEnabled"`
+	RelayOK      bool   `json:"relayConnected"`
 }
 
 // status 返回同步状态：不打开托盘也能知道「同步到几台了」，无头排障主要靠它。
@@ -152,6 +153,7 @@ func (a *api) status(w http.ResponseWriter, r *http.Request) {
 	}
 	if a.opts.Relay != nil {
 		resp.RelayURL, resp.RelayOK = a.opts.Relay()
+		resp.RelayEnabled = resp.RelayURL != ""
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
