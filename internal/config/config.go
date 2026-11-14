@@ -77,8 +77,11 @@ type Config struct {
 	HubAllowPlaintext bool `json:"hubAllowPlaintext"`
 
 	// ---- 中继客户端角色（B/C）----
-	// RelayURL 非空即启用：把本机变化上行到中心点，并从中心点拉取其它节点内容。
+	// RelayURL 是中心点地址；为空表示不做中继客户端。
 	RelayURL string `json:"relayURL"`
+	// RelayEnabled 是中继客户端的开关（默认 true）：置 false 时保留地址但停用，
+	// 便于在托盘里一键切换而不用重新填地址。
+	RelayEnabled bool `json:"relayEnabled"`
 	// RelayPin 是中心点证书的 SHA-256 指纹（形如 "sha256:<64 hex>"），
 	// 自签证书场景靠它确认「连的真是我的中心点」。为空则不校验（不推荐）。
 	RelayPin string `json:"relayPin"`
@@ -114,6 +117,7 @@ type configJSON struct {
 	HubKeyFile        *string `json:"hubKeyFile"`
 	HubAllowPlaintext *bool   `json:"hubAllowPlaintext"`
 	RelayURL          *string `json:"relayURL"`
+	RelayEnabled      *bool   `json:"relayEnabled"`
 	RelayPin          *string `json:"relayPin"`
 	RelayIntervalMs   *int    `json:"relayIntervalMs"`
 }
@@ -157,6 +161,7 @@ func Default() *Config {
 		HubListen:       DefaultHubListen,
 		HubKeep:         DefaultHubKeep,
 		RelayIntervalMs: DefaultRelayIntervalMs,
+		RelayEnabled:    true,
 	}
 }
 
@@ -268,6 +273,9 @@ func applyJSON(cfg *Config, p *configJSON) {
 	if p.RelayURL != nil {
 		cfg.RelayURL = *p.RelayURL
 	}
+	if p.RelayEnabled != nil {
+		cfg.RelayEnabled = *p.RelayEnabled
+	}
 	if p.RelayPin != nil {
 		cfg.RelayPin = *p.RelayPin
 	}
@@ -334,7 +342,7 @@ func (c *Config) Validate() error {
 	}
 
 	// 至少要有一种传输：三者全关是最难排查的形态（跑着但什么都不做）。
-	if !c.LANEnabled && !c.HubEnabled && strings.TrimSpace(c.RelayURL) == "" {
+	if !c.LANEnabled && !c.HubEnabled && !c.RelayActive() {
 		return fmt.Errorf("lanEnabled / hubEnabled / relayURL 至少要启用一项，否则程序不会与任何机器通信")
 	}
 	if c.HubEnabled {
@@ -367,6 +375,15 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// RelayActive 表示中继客户端是否真正生效：有地址且开关打开。
+//
+// 注意别退化成「relayEnabled 为真就必须有 relayURL」：老配置里没有这两个字段，
+// 默认 relayEnabled = true 但没有地址 —— 那种配置是纯局域网用户，
+// 一旦按「必填」校验，所有人升级后都会启动失败。
+func (c *Config) RelayActive() bool {
+	return strings.TrimSpace(c.RelayURL) != "" && c.RelayEnabled
 }
 
 // ValidatePin 校验证书指纹格式：空（不校验）或 "sha256:<64 hex>"。

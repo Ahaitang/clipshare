@@ -35,6 +35,10 @@ type Options struct {
 	// OpenURL 用系统默认程序打开 http(s) 链接或本地目录，便于测试注入；
 	// nil 时使用系统默认实现。
 	OpenURL func(string) error
+	// LANToggle / RelayToggle 切换拓扑角色。切换需要重建传输层，因此实现里
+	// 会写配置并触发重启（不是热切换）；nil 时对应菜单项置灰。
+	LANToggle   func(enabled bool) error
+	RelayToggle func(enabled bool) error
 }
 
 const (
@@ -82,6 +86,8 @@ type tray struct {
 	mdns    *systray.MenuItem
 	config  *systray.MenuItem
 	restart *systray.MenuItem
+	lan     *systray.MenuItem
+	relay   *systray.MenuItem
 	quit    *systray.MenuItem
 }
 
@@ -125,6 +131,25 @@ func (t *tray) buildMenu() {
 	t.mdns = systray.AddMenuItemCheckbox("启用 mDNS 发现", "关闭后只用配置里的 seeds 连接（design §7）", true)
 	t.mdns.Click(func() { go t.toggleMDNS() })
 
+	// 拓扑开关：同一份配置同时支持「局域网 P2P」与「经中心点」，在这里一键切换。
+	// 切换会重建传输层，所以实现是「写配置 + 重启」而不是热切换。
+	t.lan = systray.AddMenuItemCheckbox("启用局域网对等",
+		"同网段内与其它机器直连互推（关闭后只保留中继）", true)
+	if t.opts.LANToggle == nil {
+		t.lan.Disable()
+		t.lan.SetTooltip("当前模式不支持切换")
+	} else {
+		t.lan.Click(func() { go t.toggleLAN() })
+	}
+	t.relay = systray.AddMenuItemCheckbox("启用中心点中继",
+		"经中心点在不同网络之间同步（需要配置 relayURL）", false)
+	if t.opts.RelayToggle == nil {
+		t.relay.Disable()
+		t.relay.SetTooltip("未配置 relayURL")
+	} else {
+		t.relay.Click(func() { go t.toggleRelay() })
+	}
+
 	systray.AddSeparator()
 	t.config = systray.AddMenuItem("打开配置目录", t.opts.ConfigDir)
 	if t.opts.ConfigDir == "" {
@@ -142,7 +167,32 @@ func (t *tray) buildMenu() {
 
 	t.quit = systray.AddMenuItem("退出", "退出 clipshare")
 	t.quit.Click(func() { systray.Quit() })
+
+	// 记一条「菜单已就绪」的日志：托盘是纯 GUI，出问题时从日志看不出到底建成了什么。
+	// 拓扑开关是后加的关键项，明确记下它们是否创建成功，便于远程排障。
+	log.Printf("tray: 菜单已就绪（历史槽 %d 个；拓扑开关：局域网=%v 中继=%v）",
+		historySlots, t.lan != nil, t.relay != nil)
 }
+
+// toggleLAN 切换局域网对等。写配置后由 cmd 层触发重启（传输层需要重建）。
+func (t *tray) toggleLAN() {
+	cur := t.currentSnapshot().LANEnabled
+	if err := t.opts.LANToggle(!cur); err != nil {
+		log.Printf("tray: 切换局域网对等失败: %v", err)
+	}
+	t.refresh()
+}
+
+// toggleRelay 切换中心点中继。
+func (t *tray) toggleRelay() {
+	cur := t.currentSnapshot().RelayURL != ""
+	if err := t.opts.RelayToggle(!cur); err != nil {
+		log.Printf("tray: 切换中继失败: %v", err)
+	}
+	t.refresh()
+}
+
+func (t *tray) currentSnapshot() engine.Snapshot { return t.ctrl.Snapshot() }
 
 // doRestart 请求重启并让托盘循环退出：退出走正常路径，engine 会被停掉、
 // 历史会落盘，cmd 层随后用同一套参数重新拉起进程。
@@ -229,6 +279,22 @@ func (t *tray) syncChecks(snap engine.Snapshot) {
 	syncCheck(t.paused, snap.Paused)
 	syncCheck(t.auto, snap.AutoApply)
 	syncCheck(t.mdns, snap.MDNS)
+	if t.lan != nil {
+		syncCheck(t.lan, snap.LANEnabled)
+	}
+	if t.relay != nil {
+		syncCheck(t.relay, snap.RelayURL != "")
+		if snap.RelayURL != "" {
+			// 标题里体现连通性：光有地址不代表连得上（指纹错、中心点挂了都会连不上）。
+			if snap.RelayConnected {
+				t.relay.SetTitle("启用中心点中继（已连通）")
+			} else {
+				t.relay.SetTitle("启用中心点中继（未连通）")
+			}
+		} else {
+			t.relay.SetTitle("启用中心点中继")
+		}
+	}
 }
 
 func syncCheck(item *systray.MenuItem, want bool) {

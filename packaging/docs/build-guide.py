@@ -11,6 +11,59 @@ out = pathlib.Path(sys.argv[2])
 src_images = root / "packaging" / "docs" / "images"
 images = out / "images"
 
+HUB_SVG = """<svg viewBox="0 0 900 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="跨网络中继拓扑">
+  <defs>
+    <marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#5b6470"/>
+    </marker>
+    <style>
+      .net{fill:none;stroke:#c9d1d9;stroke-width:1.5;stroke-dasharray:6 5;rx:12}
+      .box{fill:#f6f8fa;stroke:#c9d1d9;stroke-width:1.5;rx:10}
+      .hub{fill:#eef4ff;stroke:#0969da;stroke-width:1.8;rx:12}
+      .t{font:13.5px -apple-system,"Segoe UI","Noto Sans CJK SC",sans-serif;fill:#1f2328}
+      .tb{font:600 14px -apple-system,"Segoe UI","Noto Sans CJK SC",sans-serif;fill:#1f2328}
+      .ts{font:11.5px -apple-system,"Segoe UI","Noto Sans CJK SC",sans-serif;fill:#57606a}
+      .flow{stroke:#0969da;stroke-width:1.8;fill:none;marker-end:url(#h)}
+      .lan{stroke:#8b949e;stroke-width:1.4;fill:none;stroke-dasharray:5 4;marker-end:url(#h)}
+    </style>
+  </defs>
+
+  <rect class="net" x="8" y="40" width="250" height="300"/>
+  <text class="ts" x="22" y="62">网络 1（公司，NAT 后）</text>
+  <rect class="box" x="28" y="80" width="210" height="64"/>
+  <text class="tb" x="44" y="104">B · 公司电脑</text>
+  <text class="ts" x="44" y="124">剪贴板 + 历史 + 托盘</text>
+
+  <rect class="box" x="28" y="176" width="210" height="58"/>
+  <text class="t" x="44" y="199">同事的机器</text>
+  <text class="ts" x="44" y="218">同网段，走局域网直连</text>
+  <path class="lan" d="M133 176 L133 148"/>
+  <text class="ts" x="142" y="166">LAN 直连</text>
+
+  <rect class="net" x="642" y="40" width="250" height="300"/>
+  <text class="ts" x="656" y="62">网络 2（家里/咖啡厅，NAT 后）</text>
+  <rect class="box" x="662" y="80" width="210" height="64"/>
+  <text class="tb" x="678" y="104">C · 家里电脑</text>
+  <text class="ts" x="678" y="124">同上，但只能经 A</text>
+
+  <rect class="hub" x="330" y="96" width="240" height="150"/>
+  <text class="tb" x="348" y="122">A · 中心点（中继）</text>
+  <text class="ts" x="348" y="144">监听 127.0.0.1:3011（只绑回环）</text>
+  <text class="ts" x="348" y="163">自签证书 + 指纹钉（relayPin）</text>
+  <text class="ts" x="348" y="182">每房间保留最近 200 条</text>
+  <text class="ts" x="348" y="201">对外由内网穿透映射（纯 TCP）</text>
+  <text class="ts" x="348" y="226">房间 f0f7751e5273 · 只转发，不看内容归属</text>
+
+  <path class="flow" d="M240 130 L328 150"/>
+  <text class="ts" x="244" y="122">上行 POST + 长轮询</text>
+  <path class="flow" d="M570 150 L660 130"/>
+  <text class="ts" x="576" y="122">下发其它节点条目</text>
+
+  <text class="ts" x="450" y="286" text-anchor="middle">B 与 C 之间没有任何直连 —— 跨网络的内容全部经 A 转发</text>
+  <text class="ts" x="450" y="308" text-anchor="middle">同一台机器可以同时开着「局域网对等」与「中继」两个开关（托盘里可切换）</text>
+  <text class="ts" x="450" y="330" text-anchor="middle">信任边界：A 能读到经过它的明文内容，因此只部署在自有机器上</text>
+</svg>"""
+
 def b64(name):
     p = src_images / name
     return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
@@ -139,7 +192,8 @@ html = (html
         .replace("{{FLOW_SVG}}", FLOW_SVG)
         .replace("{{PICKER_PNG}}", b64("picker.png"))
         .replace("{{WEBUI_PNG}}", b64("webui.png"))
-        .replace("{{ANDROID_PNG}}", b64("android-sender.png")))
+        .replace("{{ANDROID_PNG}}", b64("android-sender.png"))
+        .replace("{{HUB_SVG}}", HUB_SVG))
 images.mkdir(parents=True, exist_ok=True)
 for f in src_images.glob("*.png"):
     images.joinpath(f.name).write_bytes(f.read_bytes())

@@ -116,6 +116,11 @@ type Engine struct {
 	pubMu      stdsync.Mutex
 	publishers []func(model.Entry) error
 
+	// 中继状态由 cmd 层注入（中继客户端不归 engine 管，但托盘/状态页要能看见）。
+	relayMu        stdsync.Mutex
+	relayURL       string
+	relayConnected func() bool
+
 	// finderRebuildMu 串行化「停止旧 Finder + 启动新 Finder」，
 	// 避免并发 SetMDNS 交错执行时旧 Finder 的 goroutine/mDNS 连接泄漏。
 	finderRebuildMu stdsync.Mutex
@@ -296,19 +301,43 @@ func (e *Engine) Stop() {
 	e.logf("[engine] 已停止")
 }
 
+// SetRelayStatus 由 cmd 层注入中继客户端的地址与连通性判断（供托盘与状态页展示）。
+func (e *Engine) SetRelayStatus(url string, connected func() bool) {
+	e.relayMu.Lock()
+	defer e.relayMu.Unlock()
+	e.relayURL = url
+	e.relayConnected = connected
+}
+
+// relaySnapshot 返回中继地址与连通性（未配置时为空/false）。
+func (e *Engine) relaySnapshot() (string, bool) {
+	e.relayMu.Lock()
+	defer e.relayMu.Unlock()
+	url := e.relayURL
+	ok := false
+	if e.relayConnected != nil {
+		ok = e.relayConnected()
+	}
+	return url, ok
+}
+
 // Snapshot 返回给托盘/Web UI 的状态快照。
 func (e *Engine) Snapshot() Snapshot {
 	recent := e.store.List(SnapshotRecent)
 	lastErr := e.errText()
+	relayURL, relayOK := e.relaySnapshot()
 	return Snapshot{
-		NodeName:  e.cfg.NodeName,
-		RoomHash:  e.cfg.RoomHashValue(),
-		Paused:    e.isPaused(),
-		AutoApply: e.isAutoApply(),
-		MDNS:      e.isMDNS(),
-		Peers:     len(e.peerList()),
-		LastError: lastErr,
-		Recent:    recent,
+		LANEnabled:     e.cfg.LANEnabled,
+		RelayURL:       relayURL,
+		RelayConnected: relayOK,
+		NodeName:       e.cfg.NodeName,
+		RoomHash:       e.cfg.RoomHashValue(),
+		Paused:         e.isPaused(),
+		AutoApply:      e.isAutoApply(),
+		MDNS:           e.isMDNS(),
+		Peers:          len(e.peerList()),
+		LastError:      lastErr,
+		Recent:         recent,
 	}
 }
 

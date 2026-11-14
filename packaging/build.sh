@@ -161,6 +161,15 @@ else
     echo "    ! 未找到 Android SDK（ANDROID_HOME 或 /opt/android-sdk），跳过 APK"
 fi
 
+# ---------- 中继中心点部署件 ----------
+echo "==> 打包中继部署件"
+mkdir -p "$DIST/hub"
+cp packaging/hub/README.md packaging/hub/clipshare-hub.service \
+   packaging/hub/config.example.json packaging/hub/install-hub.sh \
+   packaging/hub/Dockerfile packaging/hub/docker-compose.yml "$DIST/hub/"
+# install-hub.sh 默认在当前目录找二进制，所以放一份同平台的进去
+cp "$DIST/clipshare" "$DIST/hub/clipshare" 2>/dev/null || cp bin/clipshare "$DIST/hub/clipshare" 2>/dev/null || true
+
 # ---------- 校验和 ----------
 echo "==> 生成校验和"
 ( cd "$DIST" && : > SHA256SUMS
@@ -169,8 +178,10 @@ echo "==> 生成校验和"
            "clipshare-sender-${VERSION}.apk" \
            "clipshare-${VERSION}-linux-amd64.tar.gz" \
            "clipshare-${VERSION}-windows-amd64.tar.gz" \
-           README.md README.html docs/guide.html docs/guide.pdf; do
-      [ -f "$f" ] && sha256sum "$f" >> SHA256SUMS
+           README.md README.html docs/guide.html docs/guide.pdf \
+           hub/README.md hub/clipshare-hub.service hub/config.example.json \
+           hub/install-hub.sh hub/Dockerfile hub/docker-compose.yml; do
+      if [ -f "$f" ]; then sha256sum "$f" >> SHA256SUMS; fi
   done )
 
 # ---------- 整包（把 dist 里所有东西打成一条 tgz） ----------

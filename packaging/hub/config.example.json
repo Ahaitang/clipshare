@@ -1,0 +1,24 @@
+{
+  "nodeName": "hub-a",
+  "deviceId": "把这里换成一个 32 位十六进制串（可用 uuidgen 去掉横线）",
+  "roomKey": "与其他机器一致的房间码",
+
+  "lanEnabled": false,
+  "hubEnabled": true,
+  "hubListen": "127.0.0.1:3011",
+  "hubKeep": 200,
+  "hubAllowPlaintext": false,
+
+  "relayURL": "",
+  "relayEnabled": true,
+
+  "port": 47100,
+  "seeds": [],
+  "historyLimit": 200,
+  "itemMaxBytes": 262144,
+  "autoApply": true,
+  "mdns": false,
+  "persist": false,
+  "pollIntervalMs": 400,
+  "noTray": true
+}

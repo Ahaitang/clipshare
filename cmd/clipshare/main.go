@@ -253,7 +253,7 @@ func serve(opts *options) error {
 
 	// 中继客户端角色（B/C）：把本机变化上行到中心点，并拉取其它节点内容。
 	var relayClient *relay.Client
-	if strings.TrimSpace(cfg.RelayURL) != "" {
+	if cfg.RelayActive() {
 		rc, relayStop, relayErr := startRelay(cfg, eng)
 		if relayErr != nil {
 			return relayErr
@@ -438,7 +438,7 @@ func serveUntilExit(eng *engine.Engine, cfg *config.Config, cfgDir, uiURL string
 		}
 	}()
 
-	if runTray(eng, cfgDir, uiURL) {
+	if runTray(eng, cfg, cfgDir, uiURL) {
 		return nil // 用户点了托盘菜单「退出」
 	}
 
@@ -455,7 +455,7 @@ func serveUntilExit(eng *engine.Engine, cfg *config.Config, cfgDir, uiURL string
 }
 
 // runTray 在主 goroutine 上运行托盘；返回 false 表示托盘不可用（已降级）。
-func runTray(eng *engine.Engine, cfgDir, uiURL string) (ok bool) {
+func runTray(eng *engine.Engine, cfg *config.Config, cfgDir, uiURL string) (ok bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			if uiURL != "" {
@@ -471,6 +471,27 @@ func runTray(eng *engine.Engine, cfgDir, uiURL string) (ok bool) {
 		Restart:   requestRestart,
 		ConfigDir: cfgDir,
 		Version:   version,
+		LANToggle: func(on bool) error {
+			return toggleTransport(cfgDir, cfg, func(c *config.Config) error {
+				if !on && !c.HubEnabled && !c.RelayActive() {
+					return fmt.Errorf("不能把局域网、中继服务端、中继客户端全部关闭，否则程序不再与任何机器通信")
+				}
+				c.LANEnabled = on
+				return nil
+			})
+		},
+		RelayToggle: func(on bool) error {
+			return toggleTransport(cfgDir, cfg, func(c *config.Config) error {
+				if on && strings.TrimSpace(c.RelayURL) == "" {
+					return fmt.Errorf("还没配置中心点地址（relayURL）：先编辑 config.json 或重新执行 clipshare join")
+				}
+				if !on && !c.LANEnabled && !c.HubEnabled {
+					return fmt.Errorf("不能把三种传输全部关闭")
+				}
+				c.RelayEnabled = on
+				return nil
+			})
+		},
 	})
 	return true
 }
@@ -502,7 +523,7 @@ func fileExists(path string) bool {
 //
 // 这种形态下不需要剪贴板/历史/托盘，是中心点 A 在无桌面服务器上的标准跑法。
 func hubOnly(cfg *config.Config) bool {
-	return cfg.HubEnabled && !cfg.LANEnabled && strings.TrimSpace(cfg.RelayURL) == ""
+	return cfg.HubEnabled && !cfg.LANEnabled && !cfg.RelayActive()
 }
 
 // waitForSignal 阻塞到收到退出信号（纯中继模式用）。

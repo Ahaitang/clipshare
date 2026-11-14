@@ -495,3 +495,33 @@ func TestLoadOldConfigStaysPureLAN(t *testing.T) {
 		t.Errorf("新字段应取默认值: %+v", cfg)
 	}
 }
+
+func TestRelayActiveSemantics(t *testing.T) {
+	// 老配置：没有 relayURL / relayEnabled。默认 relayEnabled=true，
+	// 但中继不该被当成生效，否则「至少一种传输」与校验都会误伤纯局域网用户。
+	c := Default()
+	if c.RelayActive() {
+		t.Fatal("没有 relayURL 时中继不应生效")
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("纯局域网配置必须合法: %v", err)
+	}
+
+	c.RelayURL = "https://a.example.com:8443"
+	if !c.RelayActive() {
+		t.Fatal("有地址且开关打开时应生效")
+	}
+	c.RelayEnabled = false
+	if c.RelayActive() {
+		t.Fatal("开关关闭时不应生效")
+	}
+	// 关掉中继但保留地址：仍是合法配置（可以在托盘里再打开）
+	if err := c.Validate(); err != nil {
+		t.Fatalf("停用中继但保留地址应合法: %v", err)
+	}
+	// 局域网关掉 + 中继停用 → 什么都不做，必须报错
+	c.LANEnabled = false
+	if err := c.Validate(); err == nil {
+		t.Fatal("三种传输全关时应报错")
+	}
+}

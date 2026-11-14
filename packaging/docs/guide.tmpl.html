@@ -174,6 +174,52 @@ clipshare init         # 或者交互式选择「我是第一台机器」</code>
 <pre><code>adb shell am start -n work.metoak.clipshare.sender/.MainActivity \
   --es invite 'clipshare1:房间码@电脑IP:47100'</code></pre>
 
+<h2 id="crossnet">4.8　跨网络：经中心点 A 同步</h2>
+<p>局域网 P2P 只在同一网段有效。要让两台<strong>在不同网络</strong>（各自在 NAT 后）的机器共享剪贴板，
+需要一个双方都能访问的中心点 A 做转发 —— B 与 C 之间没有任何直连。</p>
+
+<figure>
+{{HUB_SVG}}
+<figcaption>图 4　跨网络中继拓扑：B、C 各自只与 A 通信</figcaption>
+</figure>
+
+<p><strong>不是二选一，而是三个独立开关</strong>（同一份配置、同一个二进制）：</p>
+<table>
+<tr><th>开关</th><th>作用</th><th>谁打开</th></tr>
+<tr><td><code>lanEnabled</code>（默认开）</td><td>局域网对等：mDNS/seeds 发现 + 直连互推</td><td>同网段的机器</td></tr>
+<tr><td><code>hubEnabled</code> + <code>hubListen</code></td><td>中继服务端：收下上行条目并下发</td><td>中心点 A</td></tr>
+<tr><td><code>relayURL</code> + <code>relayEnabled</code></td><td>中继客户端：上行到 A、从 A 拉取</td><td>不在同一网络的机器</td></tr>
+</table>
+
+<p>托盘菜单里有「启用局域网对等」「启用中心点中继」两个勾选项，点一下即切换
+（切换会重建传输层，因此会自动重启进程生效）。</p>
+
+<h3>A 上部署</h3>
+<pre><code>sudo ./install-hub.sh ./clipshare        # 建用户、装二进制、装 systemd 单元
+clipshare hub-info --config-dir /etc/clipshare
+#   中继监听：127.0.0.1:3011
+#   证书指纹：sha256:4983af57…（填到 B/C 的 relayPin）
+#   实时状态：在线节点 2，最新序号 41</code></pre>
+<p>中继只绑 <code>127.0.0.1</code>，对外交给内网穿透映射（<strong>请用纯 TCP 透传</strong>：
+中继自己做 TLS，代理若终止 TLS 会让指纹钉失效）。</p>
+
+<h3>B / C 上指向中心点</h3>
+<pre><code>{
+  "lanEnabled": true,
+  "relayURL": "https://101.201.30.29:13004",
+  "relayPin": "sha256:4983af57ce763d83add94fe91c56fb5770be6ebdf8fee53ec7fabf357fa56ec7",
+  "relayEnabled": true
+}</code></pre>
+<p><code>clipshare status</code> 会同时报告两条链路：</p>
+<pre><code>状态：与 1 台同步中（局域网直连）
+中心点：https://101.201.30.29:13004（已连通）</code></pre>
+
+<div class="note">
+<strong>A 能读到所有经过它的剪贴板内容。</strong>中继是明文转发（不做端到端加密），
+所以只部署在自有机器上。中继强制 TLS（自签 + 指纹钉），
+<code>hubAllowPlaintext: true</code> 仅用于内网调试。
+</div>
+
 <h2 id="webui">5. 本地历史页</h2>
 <p><code>http://127.0.0.1:47101/ui</code>（端口 = 同步端口 + 1）。页面只绑回环地址、无鉴权，
 提供搜索、行内「复制到本机」、清空历史、重启，以及房间与邀请面板。</p>

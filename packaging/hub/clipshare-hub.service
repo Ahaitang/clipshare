@@ -1,0 +1,30 @@
+# clipshare 中继中心点（A）的 systemd 单元。
+#
+# 纯中继模式不碰剪贴板，因此**不需要图形会话**，可以跑在最小的服务器上。
+# 装法见同目录 README.md，或直接跑 install-hub.sh。
+[Unit]
+Description=clipshare relay hub
+Documentation=https://github.com/  # 换成你自己的仓库地址（可选）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=clipshare
+Group=clipshare
+ExecStart=/usr/local/bin/clipshare --config-dir /etc/clipshare
+Restart=always
+RestartSec=3
+
+# 中继只读配置目录、写日志；其它路径都不需要可写权限。
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/clipshare
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

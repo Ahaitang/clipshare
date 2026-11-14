@@ -12,14 +12,18 @@ import "clipshare/internal/model"
 // 它是一次性拷贝：调用方可以随意读取，不会看到后续状态变化，
 // 也没有任何字段能反向修改 engine。
 type Snapshot struct {
-	NodeName  string        // 本机展示名（config.NodeName）
-	RoomHash  string        // 房间标识（model.RoomHash），密钥本身永不出网
-	Paused    bool          // S5：同步已暂停
-	AutoApply bool          // S2：收到远端条目是否自动写入本机剪贴板
-	MDNS      bool          // mDNS 发现是否开启（design §7）
-	Peers     int           // 当前在线同房间 peer 数
-	LastError string        // 最近一次可展示的错误；空 = 无错误
-	Recent    []model.Entry // 最新在前，长度由 engine 决定（通常为托盘可见条数）
+	NodeName  string // 本机展示名（config.NodeName）
+	RoomHash  string // 房间标识（model.RoomHash），密钥本身永不出网
+	Paused    bool   // S5：同步已暂停
+	AutoApply bool   // S2：收到远端条目是否自动写入本机剪贴板
+	MDNS      bool   // mDNS 发现是否开启（design §7）
+	Peers     int    // 当前在线同房间 peer 数（局域网直连）
+	// 拓扑角色状态：一份配置同时支持两种拓扑，托盘与状态页需要能看出当前开着哪些。
+	LANEnabled     bool          // 局域网对等是否启用
+	RelayURL       string        // 中继中心点地址；空 = 未配置中继客户端
+	RelayConnected bool          // 中继当前是否连通（最近一次拉取成功）
+	LastError      string        // 最近一次可展示的错误；空 = 无错误
+	Recent         []model.Entry // 最新在前，长度由 engine 决定（通常为托盘可见条数）
 }
 
 // Controller 是 engine 暴露给界面的全部能力。tray 与 webui 只依赖它。

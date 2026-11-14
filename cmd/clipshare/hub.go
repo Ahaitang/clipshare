@@ -200,3 +200,28 @@ var readFile = os.ReadFile
 
 // logPrintf 由 serve() 绑定到标准日志，便于测试静音。
 var logPrintf = func(format string, args ...any) { log.Printf(format, args...) }
+
+// toggleTransport 修改拓扑开关：写配置 → 校验 → 落盘 → 触发重启。
+//
+// 为什么必须重启而不是热切换：局域网角色要重建 HTTP 监听与发现层、中继角色要重建
+// 长轮询与上行通道，热切换需要在引擎内部维护一堆「可启动/停止的传输」状态机，
+// 出错面远大于收益。重启在 Linux 是 exec（PID 不变），在 Windows 约 2 秒。
+func toggleTransport(dir string, cfg *config.Config, mutate func(*config.Config) error) error {
+	if err := mutate(cfg); err != nil {
+		return err
+	}
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	if err := cfg.Save(dir); err != nil {
+		return err
+	}
+	logPrintf("[tray] 拓扑开关已变更（局域网=%v 中继=%v），正在重启生效",
+		cfg.LANEnabled, cfg.RelayActive())
+	// 稍后再触发：让菜单能先把勾选画出来，避免用户以为没点动。
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		requestRestart()
+	}()
+	return nil
+}

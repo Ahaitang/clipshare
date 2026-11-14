@@ -1,0 +1,16 @@
+# 用法：
+#   1) 把 linux/amd64 的 clipshare 二进制与本目录的 config.example.json（改名 config.json）放同目录；
+#   2) docker compose up -d
+#   3) docker compose logs | grep 指纹   → 把指纹填到 B/C 的 relayPin
+services:
+  clipshare-hub:
+    build: .
+    image: clipshare-hub:0.1.0
+    container_name: clipshare-hub
+    restart: unless-stopped
+    # 只绑回环：对外交给内网穿透/反代，避免中继直接暴露在公网接口
+    ports:
+      - "127.0.0.1:3011:3011"
+    volumes:
+      # 配置与自签证书持久化（证书丢了指纹就会变，所有客户端都得重配）
+      - ./data:/etc/clipshare
