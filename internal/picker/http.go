@@ -57,6 +57,8 @@ type Status struct {
 	MDNS      bool   `json:"mdns"`
 	Entries   int    `json:"entries"`
 	LastError string `json:"lastError"`
+	RelayURL  string `json:"relayURL"`
+	RelayOK   bool   `json:"relayConnected"`
 }
 
 // Status 读取本机同步状态。

@@ -28,6 +28,7 @@ import (
 	"clipshare/internal/history"
 	"clipshare/internal/model"
 	"clipshare/internal/onboard"
+	"clipshare/internal/relay"
 	"clipshare/internal/tray"
 	"clipshare/internal/webui"
 )
@@ -204,6 +205,23 @@ func serve(opts *options) error {
 		log.Printf("警告: %v（从空历史起步，不影响同步）", loadErr)
 	}
 
+	// 纯中继节点（中心点 A 的典型形态）：只做转发，不需要剪贴板、历史、托盘、历史页。
+	// 这条路径必须在剪贴板自检之前——服务器上没有图形会话，
+	// 否则会在「未检测到图形会话」处直接退出，中继根本起不来。
+	if hubOnly(cfg) {
+		logPrintf = log.Printf
+		stopHub, hubErr := startHub(cfg, dir, nil)
+		if hubErr != nil {
+			return hubErr
+		}
+		defer stopHub()
+		log.Printf("clipshare %s 以纯中继模式运行：无剪贴板、无托盘；房间 %s",
+			version, cfg.RoomHashValue())
+		fmt.Fprintf(os.Stdout, "clipshare 中继已启动，Ctrl+C 退出\n")
+		waitForSignal()
+		return nil
+	}
+
 	// 剪贴板：engine 故意不做自检（方便测试注入假剪贴板），自检放在这里。
 	// Linux 缺外部命令时把带安装命令的错误原样打到 stderr 后退出，绝不静默空转。
 	if checkErr := clip.CheckAvailable(); checkErr != nil {
@@ -234,11 +252,13 @@ func serve(opts *options) error {
 	}
 
 	// 中继客户端角色（B/C）：把本机变化上行到中心点，并拉取其它节点内容。
+	var relayClient *relay.Client
 	if strings.TrimSpace(cfg.RelayURL) != "" {
-		relayStop, relayErr := startRelay(cfg, eng)
+		rc, relayStop, relayErr := startRelay(cfg, eng)
 		if relayErr != nil {
 			return relayErr
 		}
+		relayClient = rc
 		defer relayStop()
 	}
 
@@ -248,6 +268,12 @@ func serve(opts *options) error {
 		Invite:  func() (string, error) { return onboard.Build(cfg).String(), nil },
 		Join:    func(code string) error { return joinRoom(dir, code) },
 		Status:  eng.Snapshot,
+		Relay: func() (string, bool) {
+			if relayClient == nil {
+				return "", false
+			}
+			return cfg.RelayURL, relayClient.Connected()
+		},
 	})
 	if closeUI != nil {
 		defer closeUI()
@@ -470,4 +496,19 @@ func logStartup(cfg *config.Config, cfgDir, uiURL string, firstRun bool) {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// hubOnly 判断当前配置是否「只做中继」：开启 hub、关闭局域网对等、且不做中继客户端。
+//
+// 这种形态下不需要剪贴板/历史/托盘，是中心点 A 在无桌面服务器上的标准跑法。
+func hubOnly(cfg *config.Config) bool {
+	return cfg.HubEnabled && !cfg.LANEnabled && strings.TrimSpace(cfg.RelayURL) == ""
+}
+
+// waitForSignal 阻塞到收到退出信号（纯中继模式用）。
+func waitForSignal() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+	<-ch
+	log.Printf("收到退出信号，正在停止中继…")
 }

@@ -240,17 +240,28 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	case st.Paused:
 		state = "已暂停同步"
 	case st.Peers > 0:
-		state = fmt.Sprintf("与 %d 台同步中", st.Peers)
+		state = fmt.Sprintf("与 %d 台同步中（局域网直连）", st.Peers)
+	case st.RelayURL != "" && st.RelayOK:
+		state = "通过中心点中继中（局域网无直连节点）"
+	case st.RelayURL != "" && !st.RelayOK:
+		state = "中心点未连通"
 	}
 	fmt.Fprintf(stdout, "节点：%s\n", st.NodeName)
 	fmt.Fprintf(stdout, "房间：%s\n", st.RoomHash)
 	fmt.Fprintf(stdout, "状态：%s\n", state)
 	fmt.Fprintf(stdout, "历史：%d 条\n", st.Entries)
 	fmt.Fprintf(stdout, "自动应用远端剪贴板：%v　mDNS：%v\n", st.AutoApply, st.MDNS)
+	if st.RelayURL != "" {
+		ok := "未连通"
+		if st.RelayOK {
+			ok = "已连通"
+		}
+		fmt.Fprintf(stdout, "中心点：%s（%s）\n", st.RelayURL, ok)
+	}
 	if st.LastError != "" {
 		fmt.Fprintf(stdout, "最近错误：%s\n", st.LastError)
 	}
-	if st.Peers == 0 && !st.Paused {
+	if st.Peers == 0 && !st.Paused && !st.RelayOK {
 		fmt.Fprintf(stdout, "\n排查建议：\n")
 		fmt.Fprintf(stdout, "  1) 两端房间码一致吗：对比对方 clipshare status 的「房间」\n")
 		fmt.Fprintf(stdout, "  2) 对方地址写进 seeds 了吗：clipshare invite 拿邀请码，另一端 clipshare join\n")

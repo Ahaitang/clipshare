@@ -261,6 +261,101 @@ gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$P 
 rm ~/.config/clipshare/picker.pos
 ```
 
+### 跨网络同步（经中心点 A）
+
+局域网 P2P 只在同一网段有效。要让两台**在不同网络**（各自在 NAT 后）的机器共享剪贴板，
+需要一个双方都能访问的中心点 A 做中继 —— 它们各自只与 A 通信，内容由 A 转发。
+
+**三种角色是三个独立开关，可任意组合**（不是互斥的模式）：
+
+| 开关 | 作用 | 谁打开 |
+|---|---|---|
+| `lanEnabled`（默认 `true`） | 局域网对等：mDNS/seeds 发现 + 直连互推 | 同网段的机器 |
+| `hubEnabled` + `hubListen` | 中继服务端：收下上行条目并下发 | 中心点 A |
+| `relayURL`（非空即启用） | 中继客户端：上行到 A、从 A 拉取 | 不在同一网络里的机器 |
+
+所以一台机器可以「在公司和同事直连（LAN）+ 在家通过 A 与公司机器同步（relay）」同时成立。
+
+#### 1. 在 A 上跑中继
+
+```bash
+# A 上不需要图形会话：纯中继模式不会去碰剪贴板
+./clipshare --config-dir ~/clipshare
+```
+
+`~/clipshare/config.json` 关键片段：
+
+```json
+{
+  "roomKey": "2mnsn82k6b62",
+  "lanEnabled": false,
+  "hubEnabled": true,
+  "hubListen": "127.0.0.1:3011",
+  "hubKeep": 200,
+  "persist": false
+}
+```
+
+首次启动会自动生成自签证书（`hub-cert.pem` / `hub-key.pem`）并打印指纹：
+
+```bash
+clipshare hub-info --config-dir ~/clipshare
+# 中继监听：127.0.0.1:3011
+# 房间标识：f0f7751e5273
+# 保留条数：200
+# 证书指纹：sha256:4983af57ce763d83add94fe91c56fb5770be6ebdf8fee53ec7fabf357fa56ec7
+# 实时状态：在线节点 2，最新序号 41，房间 f0f7751e5273
+```
+
+**只监听回环 + 内网穿透**是推荐跑法：frp/nginx 把 `127.0.0.1:3011` 映射到一个公网端口，
+中继本身不直接暴露在公网接口上。
+
+#### 2. 在 B/C 上指向中心点
+
+```json
+{
+  "lanEnabled": true,
+  "relayURL": "https://101.201.30.29:13004",
+  "relayPin": "sha256:4983af57ce763d83add94fe91c56fb5770be6ebdf8fee53ec7fabf357fa56ec7",
+  "relayIntervalMs": 800
+}
+```
+
+`relayPin` 是 A 的证书指纹 —— 自签证书无法用 CA 校验，靠指纹钉确认「连的真是我的中心点」。
+改完重启（托盘菜单或历史页的「重启」按钮）即可。
+
+`clipshare status` 会同时报告两条链路：
+
+```
+状态：与 1 台同步中（局域网直连）
+中心点：https://101.201.30.29:13004（已连通）
+```
+
+#### 3. 协议与语义（自建代理时需要知道）
+
+| 方法 / 路径 | 作用 | 约束 |
+|---|---|---|
+| `POST /v1/items` | 上行一条剪贴板 | `Authorization: Bearer <roomKey>` + `X-Room: sha256(key)[:12]`；回 202 `{"seq":n}` |
+| `GET /v1/feed?since=&wait=` | 下行拉增量（长轮询） | `wait` 上限 5s；省略 `since` 只回游标；回 `{"items":[],"lastSeq":n,"peers":m}` |
+| `GET /v1/health` | 探活 | 免鉴权，回 `role=hub`、`peers`、`lastSeq` |
+
+因此自建反向代理时：`/v1/feed` 必须允许**长连接 > 5s** 且不能缓冲响应体；
+若要保留指纹钉，中间层必须做 **TCP 透传**（不做 TLS 终止）。
+
+#### 4. 安全边界（与局域网模式的区别）
+
+- **A 能读到所有经过它的剪贴板内容**。中继是明文转发（不做端到端加密），
+  所以 A 必须是**你自己的机器**。
+- 中继**强制 TLS**（自签 + 指纹钉），只有显式 `hubAllowPlaintext: true` 才允许明文，仅限内网调试。
+- 公网暴露时建议房间码加长（默认 12 位 ≈59 bit）；中继每 IP 每分钟默认限流 120 条。
+- 的中心点不可用时，客户端会指数退避重连（1s→30s），本机历史与局域网同步不受影响。
+
+#### 5. 已知取舍
+
+- 下行用长轮询而非 WebSocket：穿 NAT/代理更稳、零额外依赖，代价是延迟在 1 秒量级。
+- A 只保留最近 `hubKeep` 条（默认 200）供断线补收；`hubKeep: 0` 即纯转发不保留。
+- 客户端游标只在内存：进程重启后从中心点当前值开始，不回放历史（避免一次性灌爆剪贴板）。
+
 ### 重启（不用杀进程）
 
 改完 `config.json`、换了房间码、或想让程序重新注册快捷键之后，两处都能一键重启：

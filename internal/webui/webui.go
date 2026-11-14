@@ -43,6 +43,8 @@ type Options struct {
 	Join func(code string) error
 	// Status 返回当前同步状态；nil 时页面不显示状态条。
 	Status func() engine.Snapshot
+	// Relay 返回中继客户端状态（URL 与是否连上）；nil 表示本机不做中继客户端。
+	Relay func() (string, bool)
 }
 
 func Handler(ctrl engine.Controller, opts Options) http.Handler {
@@ -127,6 +129,8 @@ type statusResponse struct {
 	MDNS      bool   `json:"mdns"`
 	Entries   int    `json:"entries"`
 	LastError string `json:"lastError"`
+	RelayURL  string `json:"relayURL"`
+	RelayOK   bool   `json:"relayConnected"`
 }
 
 // status 返回同步状态：不打开托盘也能知道「同步到几台了」，无头排障主要靠它。
@@ -136,7 +140,7 @@ func (a *api) status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snap := a.opts.Status()
-	writeJSON(w, http.StatusOK, statusResponse{
+	resp := statusResponse{
 		NodeName:  snap.NodeName,
 		RoomHash:  snap.RoomHash,
 		Peers:     snap.Peers,
@@ -145,7 +149,11 @@ func (a *api) status(w http.ResponseWriter, r *http.Request) {
 		MDNS:      snap.MDNS,
 		Entries:   len(a.ctrl.ListEntries()),
 		LastError: snap.LastError,
-	})
+	}
+	if a.opts.Relay != nil {
+		resp.RelayURL, resp.RelayOK = a.opts.Relay()
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // invite 返回本机邀请码。

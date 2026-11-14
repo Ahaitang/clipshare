@@ -99,8 +99,8 @@ func startHub(cfg *config.Config, dir string, apply func(model.Entry)) (stop fun
 }
 
 // startRelay 启动中继客户端角色（B/C）：把本机变化上行到中心点，并拉取其它节点内容。
-func startRelay(cfg *config.Config, eng publishable) (stop func(), err error) {
-	client := relay.New(relay.Config{
+func startRelay(cfg *config.Config, eng publishable) (client *relay.Client, stop func(), err error) {
+	client = relay.New(relay.Config{
 		BaseURL:      cfg.RelayURL,
 		RoomKey:      cfg.RoomKey,
 		Pin:          cfg.RelayPin,
@@ -112,7 +112,7 @@ func startRelay(cfg *config.Config, eng publishable) (stop func(), err error) {
 	eng.AddPublisher(client.Publish)
 	client.Start()
 	logPrintf("[relay] 已连接中心点 %s（指纹校验：%v）", cfg.RelayURL, strings.TrimSpace(cfg.RelayPin) != "")
-	return client.Stop, nil
+	return client, client.Stop, nil
 }
 
 // publishable 是 startRelay 需要的最小引擎能力（便于测试替身）。

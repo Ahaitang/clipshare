@@ -56,6 +56,7 @@ type Client struct {
 	// 「只取游标」阶段，之后谁都收不到（实测踩到）。
 	synced  atomic.Bool
 	lastSeq atomic.Uint64
+	lastOK  atomic.Int64 // 最近一次成功拉取的时间戳（UnixNano）
 }
 
 // New 构造客户端。
@@ -89,6 +90,18 @@ func (c *Client) Stop() {
 	}
 	close(c.stop)
 	c.wg.Wait()
+}
+
+// Connected 表示「最近 30 秒内成功拉取过」，用于状态展示。
+//
+// 用「最近成功」而不是长连接状态：长轮询本身就是「拉一次挂一会儿」，
+// 没有持久连接可查；30 秒窗口足以覆盖一次正常轮询与一次瞬时抖动。
+func (c *Client) Connected() bool {
+	last := c.lastOK.Load()
+	if last == 0 {
+		return false
+	}
+	return time.Since(time.Unix(0, last)) < 30*time.Second
 }
 
 // LastSeq 返回当前游标（排障用）。
@@ -233,6 +246,7 @@ func (c *Client) fetch(since *uint64, wait int) (feedResp, error) {
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&out); err != nil {
 		return out, fmt.Errorf("解析中心点响应失败: %w", err)
 	}
+	c.lastOK.Store(time.Now().UnixNano())
 	return out, nil
 }
 
