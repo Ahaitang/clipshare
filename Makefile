@@ -5,7 +5,7 @@
 #   - Windows：托盘与剪贴板都走 Win32 API。
 # 因此交叉编译不需要 C 工具链，任一平台的 Go 1.24 都能产出两边的二进制。
 
-VERSION ?= 0.1.0
+VERSION ?= 1.0.0
 # 允许按需覆盖架构：make build-linux GOARCH=arm64
 GOARCH ?= amd64
 

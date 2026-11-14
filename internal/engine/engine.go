@@ -62,7 +62,7 @@ const (
 // 默认值 0.1.0 只是独立运行 engine 包（单测、未注入版本的裸 go run）时的兜底。
 // 唯一读取点是 Start 里的 sync.ServerConfig.Version（以及 discovery 的 Version 字段），
 // 不要在别处再硬编码版本号。
-var Version = "0.1.0"
+var Version = "1.0.0"
 
 // 对外可判定的错误（界面层可以直接展示 Error() 文本）。
 var (
