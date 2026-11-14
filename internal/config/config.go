@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -28,6 +30,14 @@ const (
 	// 31^12 ≈ 7.9×10^17 ≈ 59.5 bit。完整论证见 NewRoomKey 的注释与
 	// README「安全边界」、design §6「房间码熵与公开 hash」。
 	roomKeyLen = 12
+
+	// DefaultHubListen 是中继的默认监听地址。
+	// 用非 80/443 端口：不与既有 Web 服务抢端口，也避开部分网关对 443 的审计。
+	DefaultHubListen = ":8443"
+	// DefaultHubKeep 是每房间保留的最近条目数。
+	DefaultHubKeep = 200
+	// DefaultRelayIntervalMs 是长轮询挂起时长。
+	DefaultRelayIntervalMs = 1000
 )
 
 // roomKeyAlphabet 去掉了易混淆字符（0/O、1/l/i），降低手抄/截图 OCR 出错率。
@@ -50,6 +60,31 @@ type Config struct {
 	// NoTray 为 true 时不初始化托盘（无 DBus / 无 GNOME 扩展的环境）。
 	NoTray bool `json:"noTray"`
 
+	// ---- 拓扑角色（三个独立开关，可任意组合）----
+	//
+	// LANEnabled：局域网对等角色（默认开）。关掉即完全不做同网段发现/互推。
+	LANEnabled bool `json:"lanEnabled"`
+	// HubEnabled：中继服务端角色（A 服务器）。收下房间内上行条目并下发。
+	HubEnabled bool `json:"hubEnabled"`
+	// HubListen 是中继监听地址，默认 ":8443"。经内网穿透暴露时用 "127.0.0.1:3011"。
+	HubListen string `json:"hubListen"`
+	// HubKeep 是每个房间保留的最近条目数（供断线重连补收）；0 = 纯转发不保留。
+	HubKeep int `json:"hubKeep"`
+	// HubCertFile/HubKeyFile 为空时自动生成自签证书到配置目录。
+	HubCertFile string `json:"hubCertFile"`
+	HubKeyFile  string `json:"hubKeyFile"`
+	// HubAllowPlaintext 允许中继明文监听（仅内网调试；公网暴露时等于裸奔）。
+	HubAllowPlaintext bool `json:"hubAllowPlaintext"`
+
+	// ---- 中继客户端角色（B/C）----
+	// RelayURL 非空即启用：把本机变化上行到中心点，并从中心点拉取其它节点内容。
+	RelayURL string `json:"relayURL"`
+	// RelayPin 是中心点证书的 SHA-256 指纹（形如 "sha256:<64 hex>"），
+	// 自签证书场景靠它确认「连的真是我的中心点」。为空则不校验（不推荐）。
+	RelayPin string `json:"relayPin"`
+	// RelayIntervalMs 是长轮询的挂起时长（毫秒），也是无新条目时的重试节奏。
+	RelayIntervalMs int `json:"relayIntervalMs"`
+
 	// Dir 是本次运行实际使用的配置目录（运行期字段，不写入 JSON）。
 	// 由 Load 填入，供 engine 等处保存配置时复用，避免各处各自推算而分叉。
 	Dir string `json:"-"`
@@ -70,6 +105,17 @@ type configJSON struct {
 	Persist        *bool    `json:"persist"`
 	PollIntervalMs *int     `json:"pollIntervalMs"`
 	NoTray         *bool    `json:"noTray"`
+
+	LANEnabled        *bool   `json:"lanEnabled"`
+	HubEnabled        *bool   `json:"hubEnabled"`
+	HubListen         *string `json:"hubListen"`
+	HubKeep           *int    `json:"hubKeep"`
+	HubCertFile       *string `json:"hubCertFile"`
+	HubKeyFile        *string `json:"hubKeyFile"`
+	HubAllowPlaintext *bool   `json:"hubAllowPlaintext"`
+	RelayURL          *string `json:"relayURL"`
+	RelayPin          *string `json:"relayPin"`
+	RelayIntervalMs   *int    `json:"relayIntervalMs"`
 }
 
 // Dir 返回配置目录（不创建）。
@@ -105,6 +151,12 @@ func Default() *Config {
 		MDNS:           true,
 		Persist:        true,
 		PollIntervalMs: DefaultPollIntervalMs,
+
+		// 默认就是今天的行为：纯局域网对等，不开中继。
+		LANEnabled:      true,
+		HubListen:       DefaultHubListen,
+		HubKeep:         DefaultHubKeep,
+		RelayIntervalMs: DefaultRelayIntervalMs,
 	}
 }
 
@@ -192,6 +244,36 @@ func applyJSON(cfg *Config, p *configJSON) {
 	if p.NoTray != nil {
 		cfg.NoTray = *p.NoTray
 	}
+	if p.LANEnabled != nil {
+		cfg.LANEnabled = *p.LANEnabled
+	}
+	if p.HubEnabled != nil {
+		cfg.HubEnabled = *p.HubEnabled
+	}
+	if p.HubListen != nil {
+		cfg.HubListen = *p.HubListen
+	}
+	if p.HubKeep != nil {
+		cfg.HubKeep = *p.HubKeep
+	}
+	if p.HubCertFile != nil {
+		cfg.HubCertFile = *p.HubCertFile
+	}
+	if p.HubKeyFile != nil {
+		cfg.HubKeyFile = *p.HubKeyFile
+	}
+	if p.HubAllowPlaintext != nil {
+		cfg.HubAllowPlaintext = *p.HubAllowPlaintext
+	}
+	if p.RelayURL != nil {
+		cfg.RelayURL = *p.RelayURL
+	}
+	if p.RelayPin != nil {
+		cfg.RelayPin = *p.RelayPin
+	}
+	if p.RelayIntervalMs != nil {
+		cfg.RelayIntervalMs = *p.RelayIntervalMs
+	}
 }
 
 // stripBOM 去掉 UTF-8 BOM。
@@ -249,6 +331,59 @@ func (c *Config) Validate() error {
 		if _, _, err := SplitHostPort(s); err != nil {
 			return err
 		}
+	}
+
+	// 至少要有一种传输：三者全关是最难排查的形态（跑着但什么都不做）。
+	if !c.LANEnabled && !c.HubEnabled && strings.TrimSpace(c.RelayURL) == "" {
+		return fmt.Errorf("lanEnabled / hubEnabled / relayURL 至少要启用一项，否则程序不会与任何机器通信")
+	}
+	if c.HubEnabled {
+		if strings.TrimSpace(c.HubListen) == "" {
+			return fmt.Errorf("hubListen 不能为空（hubEnabled 为 true 时）")
+		}
+		if _, _, err := net.SplitHostPort(c.HubListen); err != nil {
+			return fmt.Errorf("hubListen 应为 host:port 形式，当前 %q: %w", c.HubListen, err)
+		}
+		if c.HubKeep < 0 || c.HubKeep > 10000 {
+			return fmt.Errorf("hubKeep 必须在 0-10000 之间，当前 %d", c.HubKeep)
+		}
+		if (c.HubCertFile == "") != (c.HubKeyFile == "") {
+			return fmt.Errorf("hubCertFile 与 hubKeyFile 必须同时提供或同时留空")
+		}
+	}
+	if strings.TrimSpace(c.RelayURL) != "" {
+		u, err := url.Parse(c.RelayURL)
+		if err != nil || u.Host == "" {
+			return fmt.Errorf("relayURL 不是合法地址，当前 %q", c.RelayURL)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return fmt.Errorf("relayURL 只支持 http/https，当前 %q", c.RelayURL)
+		}
+		if c.RelayIntervalMs < 100 || c.RelayIntervalMs > 30000 {
+			return fmt.Errorf("relayIntervalMs 必须在 100-30000 之间，当前 %d", c.RelayIntervalMs)
+		}
+		if err := ValidatePin(c.RelayPin); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ValidatePin 校验证书指纹格式：空（不校验）或 "sha256:<64 hex>"。
+func ValidatePin(pin string) error {
+	if strings.TrimSpace(pin) == "" {
+		return nil
+	}
+	lower := strings.ToLower(strings.TrimSpace(pin))
+	if !strings.HasPrefix(lower, "sha256:") {
+		return fmt.Errorf("relayPin 应以 sha256: 开头，当前 %q", pin)
+	}
+	hexPart := strings.TrimPrefix(lower, "sha256:")
+	if len(hexPart) != 64 {
+		return fmt.Errorf("relayPin 的指纹应为 64 位十六进制，当前 %d 位", len(hexPart))
+	}
+	if _, err := hex.DecodeString(hexPart); err != nil {
+		return fmt.Errorf("relayPin 含有非十六进制字符: %w", err)
 	}
 	return nil
 }

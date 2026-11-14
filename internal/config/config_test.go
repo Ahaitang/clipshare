@@ -394,3 +394,104 @@ func TestLoadToleratesUTF8BOM(t *testing.T) {
 		t.Error("不应把带 BOM 的合法配置备份成 .bak")
 	}
 }
+
+func TestValidateTransportRoles(t *testing.T) {
+	base := func() *Config {
+		c := Default()
+		return c
+	}
+
+	t.Run("三者全关应报错", func(t *testing.T) {
+		c := base()
+		c.LANEnabled = false
+		if err := c.Validate(); err == nil {
+			t.Fatal("三种传输全关时应报错")
+		}
+	})
+
+	t.Run("默认配置应合法（纯 LAN）", func(t *testing.T) {
+		if err := base().Validate(); err != nil {
+			t.Fatalf("默认配置应合法: %v", err)
+		}
+	})
+
+	t.Run("只开中继客户端也应合法", func(t *testing.T) {
+		c := base()
+		c.LANEnabled = false
+		c.RelayURL = "https://101.201.30.29:13004"
+		c.RelayPin = "sha256:" + strings.Repeat("a", 64)
+		if err := c.Validate(); err != nil {
+			t.Fatalf("应合法: %v", err)
+		}
+	})
+
+	t.Run("relayURL 非法", func(t *testing.T) {
+		c := base()
+		c.RelayURL = "redis://x"
+		if err := c.Validate(); err == nil {
+			t.Error("非 http(s) 应被拒")
+		}
+	})
+
+	t.Run("relayPin 格式非法", func(t *testing.T) {
+		c := base()
+		c.RelayURL = "https://a:1"
+		c.RelayPin = "sha256:xyz"
+		if err := c.Validate(); err == nil {
+			t.Error("指纹格式错误应被拒")
+		}
+	})
+
+	t.Run("hubListen 非法", func(t *testing.T) {
+		c := base()
+		c.HubEnabled = true
+		c.HubListen = "8443"
+		if err := c.Validate(); err == nil {
+			t.Error("缺端口的监听地址应被拒")
+		}
+	})
+
+	t.Run("证书只配一半", func(t *testing.T) {
+		c := base()
+		c.HubEnabled = true
+		c.HubListen = "127.0.0.1:3011"
+		c.HubCertFile = "/tmp/c.pem"
+		if err := c.Validate(); err == nil {
+			t.Error("cert 与 key 必须成对，应被拒")
+		}
+	})
+
+	t.Run("hubKeep 越界", func(t *testing.T) {
+		c := base()
+		c.HubEnabled = true
+		c.HubListen = "127.0.0.1:3011"
+		c.HubKeep = 99999
+		if err := c.Validate(); err == nil {
+			t.Error("hubKeep 越界应被拒")
+		}
+	})
+}
+
+func TestLoadOldConfigStaysPureLAN(t *testing.T) {
+	// 关键兼容性：老配置（没有新字段）必须完全等价于「纯局域网模式」。
+	dir := t.TempDir()
+	old := `{"nodeName":"old-pc","deviceId":"abc","roomKey":"oldroom12345","port":47100,
+	         "seeds":[],"historyLimit":500,"itemMaxBytes":262144,"autoApply":true,
+	         "mdns":true,"persist":true,"pollIntervalMs":400}`
+	if err := os.WriteFile(Path(dir), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("老配置应能加载: %v", err)
+	}
+	if !cfg.LANEnabled {
+		t.Error("老配置应默认启用局域网对等")
+	}
+	if cfg.HubEnabled || cfg.RelayURL != "" {
+		t.Errorf("老配置不应意外开启中继: hub=%v relay=%q", cfg.HubEnabled, cfg.RelayURL)
+	}
+	if cfg.HubListen != DefaultHubListen || cfg.HubKeep != DefaultHubKeep {
+		t.Errorf("新字段应取默认值: %+v", cfg)
+	}
+}

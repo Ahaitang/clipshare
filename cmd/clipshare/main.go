@@ -68,6 +68,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return runInit(args[1:], stdout, stderr)
 		case "status":
 			return runStatus(args[1:], stdout, stderr)
+		case "hub-info":
+			return runHubInfo(args[1:], stdout, stderr)
 		}
 	}
 
@@ -221,6 +223,24 @@ func serve(opts *options) error {
 		return startErr
 	}
 	defer eng.Stop()
+
+	// 中继服务端角色（中心点 A）：与剪贴板、局域网角色互相独立，可同时开启。
+	if cfg.HubEnabled {
+		hubStop, hubErr := startHub(cfg, dir, func(e model.Entry) { eng.IngestRemote(e) })
+		if hubErr != nil {
+			return hubErr
+		}
+		defer hubStop()
+	}
+
+	// 中继客户端角色（B/C）：把本机变化上行到中心点，并拉取其它节点内容。
+	if strings.TrimSpace(cfg.RelayURL) != "" {
+		relayStop, relayErr := startRelay(cfg, eng)
+		if relayErr != nil {
+			return relayErr
+		}
+		defer relayStop()
+	}
 
 	// 本地历史页只绑回环地址（spec §9）；起不来不影响同步。
 	uiURL, closeUI := startWebUI(eng, cfg.Port, dir, webui.Options{

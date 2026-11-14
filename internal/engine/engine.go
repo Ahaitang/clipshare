@@ -112,6 +112,10 @@ type Engine struct {
 	// 不能用 stdlib sync：本文件已经把 internal/sync 导入为 sync。
 	lastProbeNano atomic.Int64
 
+	// publishers 是中继等额外上行通道（AddPublisher 注册）。
+	pubMu      stdsync.Mutex
+	publishers []func(model.Entry) error
+
 	// finderRebuildMu 串行化「停止旧 Finder + 启动新 Finder」，
 	// 避免并发 SetMDNS 交错执行时旧 Finder 的 goroutine/mDNS 连接泄漏。
 	finderRebuildMu stdsync.Mutex
@@ -214,8 +218,24 @@ func (e *Engine) Start() error {
 	// 必须显式注入房间密钥：Broadcaster 未设置时不会发出任何请求（每个 peer 直接报错）。
 	e.bcast.SetRoomKey(e.cfg.RoomKey)
 
+	// 中继等额外上行通道：与「是否有 LAN peer」无关，必须独立于下面的 LAN 装配。
+	e.pubMu.Lock()
+	publishers := append([]func(model.Entry) error(nil), e.publishers...)
+	e.pubMu.Unlock()
+	_ = publishers
+
 	e.poller = clip.NewPoller(e.board, e.pollInterval(), e.onLocalChange)
 	e.poller.Start()
+
+	if !e.cfg.LANEnabled {
+		// 只做中继角色（或纯客户端）：不监听局域网端口、不做发现。
+		e.mu.Lock()
+		e.started = true
+		e.mu.Unlock()
+		e.logf("[engine] 启动完成：节点 %s（%s），局域网对等已关闭，房间 %s",
+			e.cfg.NodeName, shortID(e.cfg.DeviceID), e.cfg.RoomHashValue())
+		return nil
+	}
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", e.cfg.Port))
 	if err != nil {
@@ -433,6 +453,48 @@ func (e *Engine) onLocalChange(content string) {
 	e.broadcast(entry)
 }
 
+// AddPublisher 注册一个额外的上行通道（例如中继客户端）。可多次调用。
+func (e *Engine) AddPublisher(fn func(model.Entry) error) {
+	if fn == nil {
+		return
+	}
+	e.pubMu.Lock()
+	e.publishers = append(e.publishers, fn)
+	e.pubMu.Unlock()
+}
+
+// publishExtra 把条目交给所有额外通道。每个通道独立 goroutine：
+// 中继不可达时不能拖慢剪贴板轮询（S7：失败只记日志，不重试）。
+func (e *Engine) publishExtra(entry model.Entry) {
+	e.pubMu.Lock()
+	pubs := append([]func(model.Entry) error(nil), e.publishers...)
+	e.pubMu.Unlock()
+	for _, fn := range pubs {
+		go func(fn func(model.Entry) error) {
+			if err := fn(entry); err != nil {
+				e.logf("[engine] 中继上行失败（不重试）：%v", err)
+			}
+		}(fn)
+	}
+}
+
+// IngestRemote 把「非局域网入站」的条目并进本机状态（中继客户端用）。
+//
+// 与局域网入站走完全相同的路径：本地时间排序 → 内容去重 → 只在首次出现时写剪贴板。
+// ID 由 origin+content 推导，保证同一内容在多条链路上被识别为同一条（S6）。
+func (e *Engine) IngestRemote(entry model.Entry) bool {
+	entry.RecvAt = time.Now()
+	entry.ID = model.NewEntry(entry.Origin, entry.OriginName, entry.Content, entry.RecvAt).ID
+	added := true
+	if e.store != nil {
+		added = e.store.Add(entry)
+	}
+	if added {
+		e.applyRemote(entry)
+	}
+	return added
+}
+
 // applyRemote 是 sync.Server 的去重回调：只有内容首次出现时才会被调用。
 //
 // 职责边界：入历史由 sync.Server 完成，这里绝不能再 Add 一次——
@@ -490,6 +552,9 @@ func (e *Engine) probeDiscovery() {
 
 // broadcast 扇出到所有 peers；失败只记日志，不重试（S7）。
 func (e *Engine) broadcast(entry model.Entry) {
+	// 中继上行必须独立执行：LAN 没有任何 peer 时也要发得出去（这正是跨网络的主路径）。
+	e.publishExtra(entry)
+
 	if e.bcast == nil {
 		return
 	}
