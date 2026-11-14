@@ -1,8 +1,8 @@
 # clipshare
 
-局域网内多台机器共享剪贴板：**在一台机器上复制，同房间的其他机器自动同步**，每台机器各自保留可浏览的历史。
+局域网内多台机器共享剪贴板：**在一台机器上复制，同房间的其他机器自动同步**，每台机器各自保留可浏览的历史。跨网络时，用一台自有服务器做中心点中继（自签 TLS + 证书指纹钉），不同 NAT 后的机器也能同步。
 
-Ubuntu（X11 / Wayland）与 Windows 双平台，单个二进制、无 cgo、无云服务、零配置发现（mDNS）；多播被禁的网络用静态 seeds 兜底。
+Ubuntu（X11 / Wayland）与 Windows 双平台，单个二进制、无 cgo、无云服务、零配置发现（mDNS）；多播被禁的网络用静态 seeds 兜底，跨网络走中心点中继。另有只发送的 Android 端。当前版本 **1.0.0**。
 
 > 📖 **图文版使用手册**：装好之后看 `dist/docs/guide.html`（同目录也有 `guide.pdf`），
 > Ubuntu 上装包的路径是 `/usr/share/doc/clipshare/guide.html`，Windows 在开始菜单「clipshare → 使用手册」。
@@ -63,7 +63,7 @@ sudo ufw allow 47100/tcp
 
 ## 3. 快速开始
 
-**第一步：构建**（也可以直接用别人给的可执行文件）
+**第一步：构建**（也可以直接从 [Releases](https://github.com/Ahaitang/clipshare/releases/latest) 下载 1.0.0 的 deb / zip / tgz / Windows 安装器与 Android APK）
 
 ```bash
 make build-linux      # → bin/clipshare
@@ -100,22 +100,23 @@ curl -s http://192.168.1.7:47100/v1/health
 
 ```console
 $ ./bin/clipshare --version
-clipshare 0.1.0
+clipshare 1.0.0
 
 $ ./bin/clipshare --no-tray --port 47999 --config-dir /tmp/clipshare-demo
-2026/11/11 20:18:34 [engine] 启动完成：节点 haitang（e0a195），端口 47999，房间 a98508acc9a9
-2026/11/11 20:18:34 clipshare 0.1.0 已启动：节点 "haitang"，端口 47999，房间 a98508acc9a9
-2026/11/11 20:18:34 配置文件: /tmp/clipshare-demo/config.json
-2026/11/11 20:18:34 本地历史页: http://127.0.0.1:48000/ui
-2026/11/11 20:18:34 房间码: gjhbh8u6chsw —— 其他机器填同一个 roomKey 才能互通（贴日志求助前请先打码）
-2026/11/11 20:18:34 首次启动：已生成配置 /tmp/clipshare-demo/config.json；把各台机器的 roomKey 改成同一个值，再分别启动
-2026/11/11 20:18:34 已禁用托盘（--no-tray）：本地历史页 http://127.0.0.1:48000/ui，Ctrl+C 退出
+2026/11/14 23:56:24 ---- 日志开始：pid=4008515 文件=/tmp/clipshare-demo/clipshare.log ----
+2026/11/14 23:56:24 [engine] 启动完成：节点 haitang（18d9ca），端口 47999，房间 3ae611bcb821
+2026/11/14 23:56:24 clipshare 1.0.0 已启动：节点 "haitang"，端口 47999，房间 3ae611bcb821
+2026/11/14 23:56:24 配置文件: /tmp/clipshare-demo/config.json
+2026/11/14 23:56:24 本地历史页: http://127.0.0.1:48000/ui
+2026/11/14 23:56:24 房间码: mn4nqa34yzyw —— 其他机器填同一个 roomKey 才能互通（贴日志求助前请先打码）
+2026/11/14 23:56:24 首次启动：已生成配置 /tmp/clipshare-demo/config.json；把各台机器的 roomKey 改成同一个值，再分别启动
+2026/11/14 23:56:24 已禁用托盘（--no-tray）：本地历史页 http://127.0.0.1:48000/ui，Ctrl+C 退出
 
 $ curl -s http://127.0.0.1:47999/v1/health
-{"nodeId":"e0a195c5380b67353bf616be66d62633","name":"haitang","version":"0.1.0","roomHash":"a98508acc9a9"}
+{"nodeId":"18d9cab7feb7b90fe03a31dff66db651","name":"haitang","version":"1.0.0","roomHash":"3ae611bcb821"}
 
 $ curl -s -o /dev/null -w 'HTTP %{http_code}, %{content_type}, %{size_download} bytes\n' http://127.0.0.1:48000/ui
-HTTP 200, text/html; charset=utf-8, 9897 bytes
+HTTP 200, text/html; charset=utf-8, 14660 bytes
 ```
 
 > **本机历史页**：端口 = 同步端口 + 1（默认 `47100` → `http://127.0.0.1:47101/ui`），只绑回环地址、不鉴权；该端口被占用时会自动换一个，实际地址以启动日志里「本地历史页: …」那行为准。托盘菜单「查看全部历史…」直接打开它。
@@ -128,8 +129,8 @@ HTTP 200, text/html; charset=utf-8, 9897 bytes
 
 ```bash
 # Linux：默认装到 /usr/local（需要 sudo）；也可以 PREFIX=$HOME/.local 免 root
-tar xzf clipshare-0.1.0-linux-amd64.tar.gz
-cd clipshare-0.1.0-linux-amd64
+tar xzf clipshare-1.0.0-linux-amd64.tar.gz
+cd clipshare-1.0.0-linux-amd64
 ./install.sh                    # 或：PREFIX=$HOME/.local ./install.sh
 ./uninstall.sh                  # 卸载（只删程序，保留 ~/.config/clipshare）
 ```
@@ -272,11 +273,24 @@ rm ~/.config/clipshare/picker.pos
 |---|---|---|
 | `lanEnabled`（默认 `true`） | 局域网对等：mDNS/seeds 发现 + 直连互推 | 同网段的机器 |
 | `hubEnabled` + `hubListen` | 中继服务端：收下上行条目并下发 | 中心点 A |
-| `relayURL`（非空即启用） | 中继客户端：上行到 A、从 A 拉取 | 不在同一网络里的机器 |
+| `relayURL` + `relayEnabled`（默认 `true`） | 中继客户端：上行到 A、从 A 拉取；`relayURL` 为空即不启用 | 不在同一网络里的机器 |
 
 所以一台机器可以「在公司和同事直连（LAN）+ 在家通过 A 与公司机器同步（relay）」同时成立。
 
+托盘菜单里有「启用局域网对等」「启用中心点中继」两个勾选项，点一下即切换；中继项的标题还会显示「已连通 / 未连通」。切换要重建传输层，因此实现为「写配置 + 自动重启生效」，不是热切换。
+
 #### 1. 在 A 上跑中继
+
+推荐用打包好的部署件（`make dist` 产出的 `dist/hub/`，含 systemd 单元、Docker 文件与 `install-hub.sh`）：
+
+```bash
+# 在 A 上（需要 root）；二进制与本目录的 install-hub.sh 放在一起
+sudo ./install-hub.sh ./clipshare
+# 可选：指定房间码与监听地址
+sudo ROOM_KEY=2mnsn82k6b62 HUB_LISTEN=127.0.0.1:3011 ./install-hub.sh ./clipshare
+```
+
+脚本会建 `clipshare` 系统用户、装二进制到 `/usr/local/bin`、建 `/etc/clipshare`、装并启用 `clipshare-hub.service`，最后打印证书指纹。也可以直接跑二进制（Docker/Compose 跑法见 `dist/hub/README.md`）：
 
 ```bash
 # A 上不需要图形会话：纯中继模式不会去碰剪贴板
@@ -303,12 +317,15 @@ clipshare hub-info --config-dir ~/clipshare
 # 中继监听：127.0.0.1:3011
 # 房间标识：f0f7751e5273
 # 保留条数：200
+# 明文模式：false（true 仅限内网调试）
 # 证书指纹：sha256:4983af57ce763d83add94fe91c56fb5770be6ebdf8fee53ec7fabf357fa56ec7
+#   ↑ 填到 B/C 的 relayPin
 # 实时状态：在线节点 2，最新序号 41，房间 f0f7751e5273
 ```
 
 **只监听回环 + 内网穿透**是推荐跑法：frp/nginx 把 `127.0.0.1:3011` 映射到一个公网端口，
-中继本身不直接暴露在公网接口上。
+中继本身不直接暴露在公网接口上。`hubListen` 默认是 `:8443`；经内网穿透时改成
+`127.0.0.1:3011` 这类回环地址。
 
 #### 2. 在 B/C 上指向中心点
 
@@ -316,6 +333,7 @@ clipshare hub-info --config-dir ~/clipshare
 {
   "lanEnabled": true,
   "relayURL": "https://101.201.30.29:13004",
+  "relayEnabled": true,
   "relayPin": "sha256:4983af57ce763d83add94fe91c56fb5770be6ebdf8fee53ec7fabf357fa56ec7",
   "relayIntervalMs": 800
 }
@@ -348,7 +366,7 @@ clipshare hub-info --config-dir ~/clipshare
   所以 A 必须是**你自己的机器**。
 - 中继**强制 TLS**（自签 + 指纹钉），只有显式 `hubAllowPlaintext: true` 才允许明文，仅限内网调试。
 - 公网暴露时建议房间码加长（默认 12 位 ≈59 bit）；中继每 IP 每分钟默认限流 120 条。
-- 的中心点不可用时，客户端会指数退避重连（1s→30s），本机历史与局域网同步不受影响。
+- 中心点不可用时，客户端会指数退避重连（1s→30s），本机历史与局域网同步不受影响。
 
 #### 5. 已知取舍
 
@@ -399,7 +417,7 @@ schtasks /create /tn clipshare-autostart /tr '"C:\Users\<你>\clipshare.exe" --p
 
 ## 4. 禁多播网络怎么办（企业 Wi-Fi / 隔离 VLAN）
 
-mDNS 依赖多播。多播被禁时，**唯一可用路径**是关掉 mDNS、改用手填的 seeds：在各台机器的 `config.json` 里改这两个字段（其余字段保持原样）：
+mDNS 依赖多播。多播被禁时，**同一网段内的唯一可用路径**是关掉 mDNS、改用手填的 seeds：在各台机器的 `config.json` 里改这两个字段（其余字段保持原样）。如果两台机器根本不在同一网络，见第 3 节的「跨网络同步（经中心点 A）」。
 
 ```json
 {
@@ -415,9 +433,10 @@ mDNS 依赖多播。多播被禁时，**唯一可用路径**是关掉 mDNS、改
 
 ## 5. 安全边界（请务必先看这一段）
 
-v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都请当成事实：
+局域网模式是**内网信任模型**，没有 TLS、没有账号体系。以下每条都请当成事实（跨网络中继额外有自签 TLS，见第 3 节）：
 
-- **明文传输**：HTTP/1.1 + JSON，同网段可被嗅探，也可被注入。
+- **局域网明文传输**：HTTP/1.1 + JSON，同网段可被嗅探，也可被注入。
+- **中继链路有 TLS，但不做端到端加密**：B/C 与 A 之间是自签 TLS + 指纹钉；A 能看到明文内容，所以 A 必须是自己的机器。`relayPin` 留空等于不校验证书，不推荐。
 - **同房间内任何人，既能读取这条同步流，也能直接往你的剪贴板写内容**——`/v1/items` 收到即写入历史，`autoApply` 打开时还会写进本机剪贴板。
 - **房间密钥只解决「谁能接入」**，不提供保密性，也不防重放。
 - **房间码是唯一凭证，长度必须够**：`/v1/health` 与 mDNS TXT 都会公开 `sha256(roomKey)` 的前 12 位（48 bit）。拿到这个 hash 就能**离线枚举**候选 key 并用它验证——**6 位房间码只有 31^6 ≈ 8.9×10^8 ≈ 29.7 bit，单核分钟级即可爆破**，等于把整个房间（读剪贴板流 + 往你剪贴板写内容）交出去。当前版本首启生成 **12 位（31^12 ≈ 59.5 bit）**；旧的 6 位配置仍可用，但请改成 12 位以上，且多机对齐时从 `config.json` **复制粘贴**，不要口述/手抄。
@@ -426,7 +445,7 @@ v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都
 - **历史默认明文落盘**（`history.json`，权限 0600）：不想落盘就 `"persist": false` 或加 `--no-persist`（内存历史仍可用）。
 - **Web UI 只绑 `127.0.0.1`、不做鉴权**：能访问本机这个端口的人就能读历史、写剪贴板。
 
-不要在不可信网络（咖啡店 Wi-Fi、公共热点）里开。v2 的升级路径是在 listener/dialer 两处加自签 TLS，协议其余部分不变。
+不要在不可信网络（咖啡店 Wi-Fi、公共热点）里开。局域网 P2P 仍是明文 HTTP；跨网络请只连自己的中心点 A，并按第 3 节配置 `relayPin`。
 
 ## 6. 已知行为（有意的取舍）
 
@@ -439,7 +458,7 @@ v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都
 
 ## 7. 配置项（`config.json`）
 
-字段与 `internal/config/config.go` 的 `Config` 结构体一一对应。所有字段都会被写回文件；手改时只改需要的字段，**其它字段请保留原值**（缺字段会回落默认值，`deviceId` / `roomKey` 缺失会被重新生成）。
+字段与 `internal/config/config.go` 的 `Config` JSON 字段一一对应（`Dir` 是运行期字段，不落盘）。所有字段都会被写回文件；手改时只改需要的字段，**其它字段请保留原值**（缺字段会回落默认值，`deviceId` / `roomKey` 缺失会被重新生成）。
 
 | 字段 | 类型 | 默认值 | 含义 / 校验 |
 |---|---|---|---|
@@ -455,10 +474,35 @@ v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都
 | `persist` | bool | `true` | 历史是否明文落盘到 `history.json` |
 | `pollIntervalMs` | int | `400` | 剪贴板轮询间隔（毫秒）。取值 100–5000 |
 | `noTray` | bool | `false` | 不初始化托盘，等价于命令行 `--no-tray`（无 DBus / 无 AppIndicator 扩展的环境） |
+| `lanEnabled` | bool | `true` | 局域网对等角色：是否做 mDNS/seeds 发现与同网段直连互推 |
+| `hubEnabled` | bool | `false` | 中继服务端角色（中心点 A）：收下上行条目并下发 |
+| `hubListen` | string | `:8443` | 中继监听地址；`hubEnabled` 为 true 时必填，经内网穿透时建议 `127.0.0.1:3011` |
+| `hubKeep` | int | `200` | 每房间保留的最近条目数（0 = 纯转发不保留）。取值 0–10000 |
+| `hubCertFile` / `hubKeyFile` | string | `""` | 中继证书/私钥路径；留空则用配置目录下的 `hub-cert.pem` / `hub-key.pem`。两者必须同时提供或同时留空 |
+| `hubAllowPlaintext` | bool | `false` | 允许中继明文监听；仅限内网调试，公网暴露等于裸奔 |
+| `relayURL` | string | `""` | 中心点地址（`http(s)://host:port`）；非空且 `relayEnabled` 为 true 时才做中继客户端 |
+| `relayEnabled` | bool | `true` | 中继客户端开关；关掉后保留 `relayURL`，便于在托盘里一键切换 |
+| `relayPin` | string | `""` | 中心点证书 SHA-256 指纹（`sha256:<64 位 hex>`）；留空 = 不校验，不推荐 |
+| `relayIntervalMs` | int | `1000` | 长轮询挂起时长与重试节奏（毫秒）。取值 100–30000；仅在 `relayURL` 非空时校验 |
+
+三条传输（`lanEnabled` / `hubEnabled` / `relayURL` + `relayEnabled`）**至少要启用一条**；全关会报错，因为那样程序跑着却不与任何机器通信。`relayEnabled` 默认 true、`relayURL` 默认为空——这是为了兼容纯局域网老配置：**没有地址时不会因为开关为 true 就要求填地址**。
 
 配置文件损坏时：原文件备份为 `config.json.bak`，然后用默认值重建（`deviceId` / `roomKey` 会变，需要重新对齐房间码）。
 
-## 8. 命令行参数
+## 8. 命令行
+
+**子命令**（`clipshare <子命令> [选项]`，都支持 `--config-dir`）：
+
+| 子命令 | 作用 |
+|---|---|
+| `clipshare init` | 交互式首次配置：选「我是第一台机器」或「加入已有房间」 |
+| `clipshare invite` | 打印本机邀请码（房间码 + 对方地址） |
+| `clipshare join <邀请码>` | 写入房间码与 seeds，并让正在运行的实例重启生效 |
+| `clipshare status` | 打印节点、房间、状态、历史条数与中心点连通性（不开托盘也能排障） |
+| `clipshare pick [--limit N]` | 弹出历史选择窗口（`Ctrl+Alt+V` 调用的就是它） |
+| `clipshare hub-info` | 打印中继监听、证书指纹、保留条数与在线节点（部署中心点后自检用） |
+
+**启动参数**：
 
 | flag | 作用 |
 |---|---|
@@ -471,10 +515,11 @@ v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都
 | `--no-persist` | 不落盘历史（等价 `persist: false`） |
 | `--config-dir <dir>` | 配置目录（默认取系统用户配置目录下的 `clipshare/`） |
 | `--version` | 打印 `clipshare <version>` 后退出（版本由构建时 `-ldflags -X main.version` 注入） |
+| `--startup-delay <duration>` | 内部用：启动后延迟再监听端口（重启时避免与旧进程抢端口） |
 
 - flag 优先级高于配置文件；但**只影响本次运行，不写回配置文件**（实测：带 `--room flag-room --port 47999` 启动后重读 `config.json`，值仍是原样）。
 - 完整列表与文案以 `./clipshare --help` 为准（附录有实跑原文）。
-- `--config-dir` 会一路生效到托盘开关：切换「自动应用 / mDNS」时写回的是**这个目录**的 `config.json`，不会在你的默认配置目录留下第二份（有回归测试守着）。
+- `--config-dir` 会一路生效到托盘开关：切换「自动应用 / mDNS / 局域网对等 / 中心点中继」时写回的是**这个目录**的 `config.json`，不会在你的默认配置目录留下第二份（有回归测试守着）。
 
 ## 9. 排障
 
@@ -492,6 +537,7 @@ v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都
 
   `200` = 这个方向通；`000` = 连不上（被防火墙挡、端口不对或没在监听）。哪边测出 `000`，就是哪边的入站没放行。
 - **日志显示「广播条目 … 当前无可用节点」**：说明 peer 发现根本没成功，而不是发送失败。依次确认：① 各机 `roomKey` 一致；② `mdns: false` 时 `seeds` 的 `host:port` 填对且能互相路由；③ 端口入站已放行——seeds 探活走的就是同一个端口，被防火墙挡住就永远发现不了对方。
+- **跨网络同步不通**：先跑 `clipshare status` 看「中心点：…（已连通 / 未连通）」。`relayURL` 没配、`relayEnabled` 被关、`relayPin` 与 A 的证书指纹不一致、代理终止了 TLS（必须 **TCP 透传**）、或 A 上的中继没在跑，都会显示未连通。A 上跑 `clipshare hub-info --config-dir /etc/clipshare` 看「在线节点」是否 ≥1。
 - **Linux 报缺剪贴板命令**：X11 下报 `缺少剪贴板命令 xclip/xsel：请安装其一，例如 sudo apt install xclip（或 sudo apt install xsel）`；Wayland 下报 `Wayland 会话缺少剪贴板命令 wl-paste、wl-copy：请安装 wl-clipboard：sudo apt install wl-clipboard`——按提示装即可。若你其实在 X11 会话却带着 `WAYLAND_DISPLAY`，清掉该变量再启动。
 - **按 `Ctrl+Alt+V` 没反应**：先跑 `clipshare status` 看 `历史：N 条`。
   - **历史为空**时旧版本会静默退出（现在改成照样弹窗并提示「还没有剪贴板历史」）；
@@ -506,21 +552,23 @@ v1 是**内网信任模型**，没有 TLS、没有账号体系。以下每条都
 ## 10. 开发
 
 ```bash
-make vet            # go vet ./...
-make test           # go test ./... -race -count=1
-make fmt            # gofmt -l -w .（会改写文件）
-make build-linux    # → bin/clipshare      CGO_ENABLED=0 GOOS=linux
-make build-windows  # → bin/clipshare.exe  CGO_ENABLED=0 GOOS=windows
-make all            # vet + test + 双平台构建（默认目标）
-make clean          # 删除 bin/
+make vet                    # go vet ./...
+make test                   # go test ./... -race -count=1
+make fmt                    # gofmt -l -w .（会改写文件）
+make build-linux            # → bin/clipshare      CGO_ENABLED=0 GOOS=linux
+make build-windows          # → bin/clipshare.exe  CGO_ENABLED=0 GOOS=windows（GUI 子系统）
+make build-windows-console  # → bin/clipshare-console.exe（保留控制台，排障用）
+make all                    # vet + test + 双平台构建（默认目标）
+make dist                   # 打安装包与文档到 dist/（deb、zip、tgz、hub 部署件、使用手册）
+make clean                  # 删除 bin/
 ```
 
-两个 build 目标默认 `GOARCH=amd64`，可用 `make build-linux GOARCH=arm64` 覆盖（`-race` 只能在本机跑，交叉产物不参与测试）。版本号 `VERSION ?= 0.1.0`，经 `-ldflags -s -w -X main.version=$(VERSION)` 注入，可用 `make build-linux VERSION=0.2.0` 覆盖。
+两个 build 目标默认 `GOARCH=amd64`，可用 `make build-linux GOARCH=arm64` 覆盖（`-race` 只能在本机跑，交叉产物不参与测试）。版本号 `VERSION ?= 1.0.0`，经 `-ldflags -s -w -X main.version=$(VERSION)` 注入，可用 `make build-linux VERSION=1.0.1` 覆盖。
 
 目录结构（一行一包）：
 
 ```
-cmd/clipshare/     入口：解析 flag、加载配置、组装并启动
+cmd/clipshare/     入口：解析 flag / 子命令、加载配置、组装并启动
 internal/model     条目类型、内容归一化、内容 hash / 房间 hash
 internal/config    配置定位、默认值、加载、损坏备份重建
 internal/history   环形历史、内容去重、原子落盘
@@ -528,43 +576,57 @@ internal/clip      剪贴板读写适配器 + 轮询变更检测
 internal/sync      HTTP 收发、房间鉴权、并发广播
 internal/discovery mDNS 公告/订阅 + 静态 seeds 探活
 internal/engine    组装上述组件，独占同步语义（S1–S8）
+internal/relay     中继客户端（B/C）：上行 + 长轮询下拉
+internal/hub       中继服务端（A）：鉴权、限流、保留与下发
+internal/tlscert   自签证书生成与 SHA-256 指纹
+internal/onboard   邀请码的生成与解析
+internal/hotkey    全局热键（Linux/GNOME 与 Windows）
+internal/picker    历史选择窗口与 HTTP 客户端
 internal/tray      托盘菜单与图标（含 --no-tray 降级）
 internal/webui     本地历史页（只绑 127.0.0.1）
+packaging/         安装包、使用手册与中继部署件
 docs/superpowers/specs/  设计文档与任务拆解
 ```
 
-## 附录：命令验证状态（定稿）
+## 附录：验收记录
 
 环境：Ubuntu 20.04.6 LTS，`go1.24.0 linux/amd64`，`DISPLAY=:1`（无 `WAYLAND_DISPLAY`），已装 `xsel`。
-以下每条命令都在本机真跑过，输出为原文。
+以下 `make all`、`--version` 与 `--help` 为 1.0.0 在 2026-11-14 的实跑原文；运行期与真机验收记录保留 0.1.0 时期的原文并另行标注。
 
 ```console
 $ make all
 go vet ./...
 go test ./... -race -count=1
-ok  	clipshare/cmd/clipshare	1.014s
-ok  	clipshare/internal/clip	1.462s
-ok  	clipshare/internal/config	1.012s
-ok  	clipshare/internal/discovery	1.316s
-ok  	clipshare/internal/engine	12.980s
-ok  	clipshare/internal/history	1.139s
-ok  	clipshare/internal/model	1.008s
-ok  	clipshare/internal/sync	1.327s
-ok  	clipshare/internal/tray	1.052s
-ok  	clipshare/internal/webui	1.015s
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=0.1.0" -o bin/clipshare ./cmd/clipshare
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=0.1.0" -o bin/clipshare.exe ./cmd/clipshare
+ok  	clipshare/cmd/clipshare	1.324s
+ok  	clipshare/internal/clip	1.773s
+ok  	clipshare/internal/config	1.025s
+ok  	clipshare/internal/discovery	1.319s
+ok  	clipshare/internal/engine	14.626s
+ok  	clipshare/internal/history	1.148s
+ok  	clipshare/internal/hotkey	1.010s
+ok  	clipshare/internal/hub	1.336s
+ok  	clipshare/internal/model	1.012s
+ok  	clipshare/internal/onboard	1.010s
+ok  	clipshare/internal/picker	1.326s
+ok  	clipshare/internal/relay	2.892s
+ok  	clipshare/internal/sync	1.332s
+ok  	clipshare/internal/tlscert	1.018s
+ok  	clipshare/internal/tray	1.056s
+ok  	clipshare/internal/webui	1.023s
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=1.0.0" -o bin/clipshare ./cmd/clipshare
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=1.0.0 -H windowsgui" -o bin/clipshare.exe ./cmd/clipshare
 
 $ ls -l bin/
--rwxrwxr-x 1 haitang haitang 9801912 11月 11 19:12 clipshare
--rwxrwxr-x 1 haitang haitang 7737856 11月 11 19:12 clipshare.exe
+总用量 18740
+-rwx------ 1 haitang haitang 10784952 11月 14 23:55 clipshare
+-rwx------ 1 haitang haitang  8400384 11月 14 23:55 clipshare.exe
 
 $ file bin/clipshare bin/clipshare.exe
-bin/clipshare:     ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, BuildID[sha1]=65a1d09cab5bb1dfaf18ce1334971f6662d6ea3b, stripped
-bin/clipshare.exe: PE32+ executable (console) x86-64, for MS Windows
+bin/clipshare:     ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, BuildID[sha1]=6c81aa2079d40a9939accc549f55b266347a997b, stripped
+bin/clipshare.exe: PE32+ executable (GUI) x86-64, for MS Windows
 ```
 
-### 运行期行为（`--no-tray`，真实剪贴板）
+### 运行期行为（`--no-tray`，0.1.0 实测，真实剪贴板）
 
 ```console
 $ printf 't5-accept-%s' "$(date +%s)" | xsel --clipboard --input   # 模拟用户复制
@@ -588,7 +650,7 @@ $ cat /tmp/clipshare-demo/history.json
 - 剪贴板命令缺失时的退出路径（`PATH=/nonexistent` 实测）：`clipshare: 缺少剪贴板命令 xclip/xsel：请安装其一，例如 sudo apt install xclip（或 sudo apt install xsel）`，退出码 1，不会静默空转。
 - 托盘模式（不带 `--no-tray`）在本机能启动、SIGTERM 退出码 0。
 
-### 真机验收记录（Ubuntu 22.04 X11 + Windows 10 双机实测）
+### 真机验收记录（0.1.0 时期，Ubuntu 22.04 X11 + Windows 10 双机实测）
 
 在真实的两台机器上跑过（不是模拟）：Linux `172.26.81.147`、Windows 10 19045 `172.26.81.73`，同一 `/22` 网段，两端 `roomKey` 一致、`--mdns=false` + 互填 `seeds`。
 
@@ -628,11 +690,11 @@ Linux 历史:   条数 1, 来源 DESKTOP-UIRQT1R
 - 真实多播环境下的 mDNS 自动发现（双机验收用的是 `--mdns=false` + `seeds` 这条确定性更强的路径）。
 - macOS（不是 v1 目标平台）。
 
-### `--help` 原文
+### `--help` 原文（1.0.0）
 
 ```console
 $ ./bin/clipshare --help
-clipshare 0.1.0 —— 局域网剪贴板共享
+clipshare 1.0.0 —— 局域网剪贴板共享
 
 用法：clipshare [选项]
 
@@ -655,6 +717,8 @@ clipshare 0.1.0 —— 局域网剪贴板共享
     	房间码，覆盖配置里的 roomKey；多台机器必须填同一个
   -seed value
     	追加一个静态节点地址 host:port（可重复指定；给禁多播网络用）
+  -startup-delay duration
+    	内部用：启动后延迟指定时间再监听端口（重启时避免与旧进程抢端口）
   -version
     	打印版本号后退出
 ```
@@ -665,7 +729,7 @@ clipshare 0.1.0 —— 局域网剪贴板共享
 
 剩下的只有一类，都需要人坐在电脑前看屏幕或点鼠标：
 
-- **托盘菜单逐项点击**：取回历史、发送当前剪贴板、勾选自动应用 / mDNS、查看全部历史、退出（Linux 侧已验证图标注册与注销，菜单项的点击效果未逐个验）。
+- **托盘菜单逐项点击**：取回历史、发送当前剪贴板、勾选自动应用 / mDNS、切换「启用局域网对等 / 启用中心点中继」、查看全部历史、退出（Linux 侧已验证图标注册与注销，菜单项的点击效果未逐个验）。
 - **Windows 托盘图标的视觉效果**（SSH 会话跑不出可见托盘，需要交互式桌面会话）。
 - **真实多播环境下的 mDNS 自动发现**（双机验收刻意用了 `--mdns=false` 的确定性路径）。
 
